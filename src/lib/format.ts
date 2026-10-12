@@ -22,6 +22,19 @@ export function fmtDur(ms?: number | null): string {
   return m + 'm' + Math.round((ms % 60000) / 1000) + 's'
 }
 
+export function cacheHitRate(u?: {
+  input?: number
+  cacheRead?: number
+  cacheWrite?: number
+} | null): number | null {
+  const input = u?.input ?? 0
+  const cacheRead = u?.cacheRead ?? 0
+  const cacheWrite = u?.cacheWrite ?? 0
+  const prompt = input + cacheRead + cacheWrite
+  if (prompt <= 0 || cacheRead + cacheWrite <= 0) return null
+  return (cacheRead / prompt) * 100
+}
+
 export function fmtChars(n?: number | null): string {
   const v = Number(n) || 0
   if (v < 1000) return String(v)

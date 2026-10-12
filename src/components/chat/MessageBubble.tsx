@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Brain, Check, ChevronRight, Copy, GitBranch, RefreshCw, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fmtTokens, type ChatItem } from '@/lib/pi'
+import { cacheHitRate } from '@/lib/format'
 import { usePi } from '@/store/pi'
 import Markdown from '@/components/markdown/Markdown'
 import { ToolCard } from './ToolCard'
@@ -15,6 +16,8 @@ export function MessageBubble({
   userOrdinal?: number
   isLastUser?: boolean
 }) {
+  const { t } = usePi()
+
   if (item.kind === 'notice')
     return (
       <div
@@ -58,6 +61,7 @@ export function MessageBubble({
 
   const usage = item.usage
   const tokens = (usage?.input ?? 0) + (usage?.output ?? 0)
+  const hit = cacheHitRate(usage)
   return (
     <div className="group animate-fade-in space-y-2">
       {item.blocks.map((b, i) => {
@@ -84,6 +88,7 @@ export function MessageBubble({
         {tokens > 0 && !item.streaming && (
           <span className="text-[11px] text-muted-foreground">
             {item.stopReason || 'stop'} · in {fmtTokens(usage?.input)} / out {fmtTokens(usage?.output)}
+            {hit != null ? ` · ${t('stats.cacheHit')} ${hit.toFixed(0)}%` : ''}
             {usage?.cost?.total ? ` · $${usage.cost.total.toFixed(5)}` : ''}
           </span>
         )}

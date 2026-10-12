@@ -251,6 +251,8 @@ window.PI_I18N = {
     'toolbar.offline': 'OFFLINE',
     'stats.tokens': 'tok',
     'stats.ctx': '{pct}% ctx',
+    'stats.cacheHit': 'cache',
+    'stats.steps': '{turns} turns · {steps} steps',
 
     /* ---- composer / attachments ---- */
     'composer.placeholder': 'Ask pi anything…   Enter sends · ⇧Enter newline · @ files · / commands · paste images',
@@ -721,6 +723,8 @@ window.PI_I18N = {
     'toolbar.offline': '离线',
     'stats.tokens': 'token',
     'stats.ctx': '上下文 {pct}%',
+    'stats.cacheHit': '缓存命中',
+    'stats.steps': '{turns}轮{steps}步',
 
     /* ---- composer / attachments ---- */
     'composer.placeholder': '问 pi 任何问题…   Enter 发送 · ⇧Enter 换行 · @ 引用文件 · / 命令 · 可粘贴图片',

@@ -35,12 +35,22 @@ export interface CommandInfo {
   source?: string
 }
 export interface StatsState {
-  tokens?: { total?: number }
+  tokens?: {
+    input?: number
+    output?: number
+    cacheRead?: number
+    cacheWrite?: number
+    total?: number
+  }
   cost?: number
   contextUsage?: { percent?: number; tokens?: number; contextWindow?: number }
   sessionId?: string
   sessionFile?: string
   messageCount?: number
+  userMessages?: number
+  assistantMessages?: number
+  toolCalls?: number
+  totalMessages?: number
 }
 export interface ExtDialog {
   id: string
@@ -85,6 +95,8 @@ export interface PiState {
   changesTick: number
   queue: { steer: number; follow: number }
   runStartedAt: number
+  assistantStartedAt: number
+  lastTps: number
 }
 
 const initialState: PiState = {
@@ -106,6 +118,8 @@ const initialState: PiState = {
   changesTick: 0,
   queue: { steer: 0, follow: 0 },
   runStartedAt: 0,
+  assistantStartedAt: 0,
+  lastTps: 0,
 }
 
 /* --------------------------------------------------------------- bus/events */
@@ -234,6 +248,7 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
         return {
           ...state,
           streaming: true,
+          assistantStartedAt: Date.now(),
           items: state.items.concat({ kind: 'assistant', id: uid('a'), blocks: [], streaming: true }),
         }
       // custom/system messages are rendered once, in message_end (honouring display:false)
@@ -293,8 +308,13 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
         return { ...state, items: state.items.concat({ kind: 'system', id: uid('s'), text: extractText(m.content) }) }
       }
       if (m.role !== 'assistant') return state
+      const outTok = m.usage?.output ?? 0
+      const elapsed = state.assistantStartedAt ? (Date.now() - state.assistantStartedAt) / 1000 : 0
       return {
         ...state,
+        assistantStartedAt: 0,
+        // generation throughput of this reply, like pi's footer
+        lastTps: outTok > 0 && elapsed > 0.2 ? outTok / elapsed : state.lastTps,
         items: withLastAssistant(state.items, (a) => ({
           ...a,
           streaming: false,
@@ -599,6 +619,8 @@ export function PiProvider({ children }: { children: ReactNode }) {
           }
         })
       }
+      // keep totals / cache stats / step counts fresh after each turn
+      if (data.type === 'agent_settled') void sendCommand({ type: 'get_session_stats' })
       eventBus.current.get(data.type)?.forEach((cb) => {
         try {
           cb(data)

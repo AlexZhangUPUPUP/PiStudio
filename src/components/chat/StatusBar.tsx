@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { usePi } from '@/store/pi'
-import { fmtCost, fmtTokens } from '@/lib/format'
+import { fmtCost, fmtTokens, cacheHitRate } from '@/lib/format'
 
 export function StatusBar() {
-  const { t, info, proc, connected, streaming, runAction, stats, extStatus, queue, runStartedAt } =
+  const { t, info, proc, connected, streaming, runAction, stats, extStatus, queue, runStartedAt, lastTps } =
     usePi()
   const [, tick] = useState(0)
 
@@ -31,11 +31,32 @@ export function StatusBar() {
   const queued = queue.steer + queue.follow
   const ext = Object.values(extStatus).filter(Boolean).join('  ·  ')
 
-  const tokens = stats?.tokens?.total ?? 0
+  const tok = stats?.tokens || {}
   const cost = stats?.cost ?? 0
   const cu = stats?.contextUsage
-  let statsText = `${fmtTokens(tokens)} ${t('stats.tokens')} · ${fmtCost(cost)}`
-  if (cu && cu.percent != null) statsText += ` · ${t('stats.ctx', { pct: Math.round(cu.percent) })}`
+  const hit = cacheHitRate(tok)
+  const turns = stats?.userMessages ?? 0
+  const steps = stats?.toolCalls ?? 0
+
+  const parts: string[] = []
+  if (hit != null) parts.push(`${t('stats.cacheHit')} ${hit.toFixed(1)}%`)
+  if (lastTps > 0) parts.push(`${Math.round(lastTps)} tok/s`)
+  if (turns || steps) parts.push(t('stats.steps', { turns, steps }))
+  parts.push(`${fmtTokens(tok.total)} ${t('stats.tokens')}`)
+  if (cost > 0) parts.push(fmtCost(cost))
+  if (cu && cu.percent != null) parts.push(t('stats.ctx', { pct: Math.round(cu.percent) }))
+  const statsText = parts.join(' · ')
+
+  const statsTitle =
+    hit != null
+      ? [
+          `input ${tok.input ?? 0}`,
+          `cache read ${tok.cacheRead ?? 0}`,
+          `cache write ${tok.cacheWrite ?? 0}`,
+          `output ${tok.output ?? 0}`,
+          `cache hit ${hit.toFixed(1)}%`,
+        ].join(' · ')
+      : ''
 
   return (
     <div className="pi-statusbar flex items-center gap-3 border-t border-border px-4 py-1.5 text-[11px] text-muted-foreground">
@@ -69,7 +90,7 @@ export function StatusBar() {
           <span>{ext}</span>
         </>
       )}
-      <span className="ml-auto truncate" title={statsText}>
+      <span className="ml-auto truncate" title={statsTitle}>
         {statsText}
       </span>
       <span className="text-border">|</span>

@@ -12,8 +12,12 @@ export interface RawMessage {
   usage?: {
     input?: number
     output?: number
-    cost?: { total?: number }
+    cacheRead?: number
+    cacheWrite?: number
+    cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number }
   }
+  provider?: string
+  model?: string
   stopReason?: string
   errorMessage?: string
   timestamp?: number
