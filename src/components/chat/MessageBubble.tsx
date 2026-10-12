@@ -62,6 +62,8 @@ export function MessageBubble({
   const usage = item.usage
   const tokens = (usage?.input ?? 0) + (usage?.output ?? 0)
   const hit = cacheHitRate(usage)
+  let toolN = 0
+  const toolSteps = item.blocks.map((b) => (b.type === 'tool' ? ++toolN : 0))
   return (
     <div className="group animate-fade-in space-y-2">
       {item.blocks.map((b, i) => {
@@ -75,7 +77,7 @@ export function MessageBubble({
             </div>
           )
         if (b.type === 'thinking') return <ThinkingBlock key={i} text={b.text} streaming={b.streaming} />
-        return <ToolCard key={i} tool={b} />
+        return <ToolCard key={i} tool={b} step={toolSteps[i] || undefined} />
       })}
 
       {item.errorMessage && (

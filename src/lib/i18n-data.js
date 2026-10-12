@@ -379,6 +379,14 @@ window.PI_I18N = {
     'label.stderr': 'stderr',
     'label.error': 'error',
     'label.tool': 'tool',
+    'tool.status': 'status',
+    'tool.schema': 'schema',
+    'tool.timing': 'timing',
+    'tool.running': 'running',
+    'tool.pending': 'pending',
+    'tool.done': 'done',
+    'tool.error': 'error',
+    'tool.step': 'step {n}',
 
     /* ---- roles ---- */
     'role.user': 'user',
@@ -850,6 +858,14 @@ window.PI_I18N = {
     'label.stderr': '错误输出',
     'label.error': '错误',
     'label.tool': '工具',
+    'tool.status': '状态',
+    'tool.schema': 'Schema',
+    'tool.timing': '计时',
+    'tool.running': '运行中',
+    'tool.pending': '等待',
+    'tool.done': '已完成',
+    'tool.error': '出错',
+    'tool.step': '第 {n} 步',
 
     /* ---- roles ---- */
     'role.user': '用户',

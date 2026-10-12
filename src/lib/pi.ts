@@ -36,6 +36,8 @@ export type AssBlock =
       result?: string
       isError?: boolean
       status: 'streaming' | 'pending' | 'running' | 'done'
+      startedAt?: number
+      endedAt?: number
     }
 
 export type ChatItem =

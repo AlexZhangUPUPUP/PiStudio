@@ -160,6 +160,7 @@ export default function (pi: ExtensionAPI) {
       tools: tools.map((t) => ({
         name: t?.name,
         description: t?.description,
+        parameters: plain(t?.parameters),
         source: plain(t?.sourceInfo),
       })),
       commands: commands.map((c) => ({

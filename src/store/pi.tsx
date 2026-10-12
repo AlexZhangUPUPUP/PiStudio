@@ -97,6 +97,7 @@ export interface PiState {
   runStartedAt: number
   assistantStartedAt: number
   lastTps: number
+  toolSchemas: Record<string, { name?: string; description?: string; parameters?: unknown; source?: unknown }>
 }
 
 const initialState: PiState = {
@@ -120,6 +121,7 @@ const initialState: PiState = {
   runStartedAt: 0,
   assistantStartedAt: 0,
   lastTps: 0,
+  toolSchemas: {},
 }
 
 /* --------------------------------------------------------------- bus/events */
@@ -340,6 +342,7 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
                 args: e.args,
                 argsText: JSON.stringify(e.args ?? {}, null, 2),
                 status: 'running',
+                startedAt: e.__t ?? Date.now(),
               }),
             }
           return {
@@ -350,6 +353,7 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
               args: e.args,
               argsText: JSON.stringify(e.args ?? {}, null, 2),
               status: 'running',
+              startedAt: t.startedAt ?? e.__t ?? Date.now(),
             })),
           }
         }),
@@ -372,6 +376,7 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
             result: extractText(e.result),
             isError: !!e.isError,
             status: 'done',
+            endedAt: e.__t ?? Date.now(),
           })),
         })),
       }
@@ -467,6 +472,17 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
 
     case 'tool_execution_start_hint':
       return state
+    case '__inspect': {
+      // the inspector's `inventory` capture carries the tool schemas
+      if (e.kind === 'inventory' && Array.isArray(e.data?.tools)) {
+        const next = { ...state.toolSchemas }
+        for (const tool of e.data.tools) {
+          if (tool && tool.name) next[tool.name] = tool
+        }
+        return { ...state, toolSchemas: next }
+      }
+      return state
+    }
     case 'queue_update':
       return {
         ...state,
