@@ -20,23 +20,44 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const SERVER = path.join(ROOT, 'server.js');
 const STATE_FILE = () => path.join(app.getPath('userData'), 'window-state.json');
+const CWD_FILE = () => path.join(app.getPath('userData'), 'cwd.json');
 
 /* ------------------------------------------------------------------ args */
 
 function parseArgs(argv) {
-  const out = { cwd: process.cwd(), piArgs: [] };
+  const out = { cwd: process.cwd(), cwdExplicit: false, piArgs: [] };
   const sep = argv.indexOf('--');
   const own = sep === -1 ? argv : argv.slice(0, sep);
   out.piArgs = sep === -1 ? [] : argv.slice(sep + 1);
   for (let i = 0; i < own.length; i++) {
     const a = own[i];
-    if (a === '--cwd' && own[i + 1]) out.cwd = path.resolve(own[++i]);
-    else if (a.startsWith('--cwd=')) out.cwd = path.resolve(a.slice(6));
+    if (a === '--cwd' && own[i + 1]) {
+      out.cwd = path.resolve(own[++i]);
+      out.cwdExplicit = true;
+    } else if (a.startsWith('--cwd=')) {
+      out.cwd = path.resolve(a.slice(6));
+      out.cwdExplicit = true;
+    }
   }
   return out;
 }
 
 const cli = parseArgs(process.argv.slice(2));
+
+/** Last working folder, so a Finder-launched app opens somewhere sensible. */
+function loadCwd() {
+  try {
+    const s = JSON.parse(fs.readFileSync(CWD_FILE(), 'utf8'));
+    if (s && typeof s.cwd === 'string' && fs.existsSync(s.cwd)) return s.cwd;
+  } catch {}
+  return app.isPackaged ? os.homedir() : process.cwd();
+}
+
+function saveCwd(cwd) {
+  try {
+    fs.writeFileSync(CWD_FILE(), JSON.stringify({ cwd }));
+  } catch {}
+}
 
 /* --------------------------------------------------------------- window */
 
@@ -247,6 +268,8 @@ async function restartAll(cwd) {
   await stopServer();
   restarting = false;
   cli.cwd = cwd;
+  cli.cwdExplicit = true;
+  saveCwd(cwd);
   if (win && !win.isDestroyed()) win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(LOADING_HTML));
   await launch(cwd);
 }
@@ -352,6 +375,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    if (!cli.cwdExplicit) cli.cwd = loadCwd();
+    saveCwd(cli.cwd);
     buildMenu();
     createWindow();
     await launch(cli.cwd);

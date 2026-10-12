@@ -40,6 +40,10 @@ local days the work happened rather than tagged releases. Newest first.
   and `pi-gui-<arch>.dmg` (`dev/package.mjs`, `@electron/packager` + `hdiutil`)
 - `legacy/` — the retired vanilla frontend and its dev scripts, archived so the
   migration stays reviewable and reversible
+- **`pigui` launcher** (`bin/pigui`, installed with `npm run link`): one command
+  from any directory, `--web` for the browser, builds `dist/` if missing; the
+  packaged `.app` now remembers its last working folder so a Finder double-click
+  opens somewhere sensible
 
 ### Changed
 - `server.js` serves `dist/` only; the old `public/` fallback is gone and a

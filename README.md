@@ -484,6 +484,21 @@ npm install          # downloads Electron (mirror configured in .npmrc)
 > because the GitHub release download stalls on some networks. Delete it if the
 > official mirror works for you.
 
+### One command (`pigui`)
+
+```bash
+npm run link            # once: symlink ~/.local/bin/pigui (already on PATH)
+pigui                   # desktop GUI, pi runs in the current directory
+pigui --web             # the same in a browser tab
+pigui --cwd ~/proj      # run pi somewhere else
+pigui -- --no-session   # args after -- go to pi
+```
+
+`bin/pigui` resolves its own symlink, builds `dist/` if it is missing, then hands
+off to `start-desktop.sh` (Electron, browser fallback) or `start.sh` (`--web`).
+The packaged `.app` can also be double-clicked: it remembers the last working
+folder in `userData/cwd.json` and falls back to your home directory.
+
 ## Packaging (macOS)
 
 Build a double-clickable app and a `.dmg`:
@@ -604,6 +619,7 @@ pi-gui/
   neobrutalist-ui-design/ source project the visual language was ported from
   start.sh                browser launcher
   start-desktop.sh        desktop launcher (Electron, browser fallback)
+  bin/pigui               one-command launcher (`npm run link` → ~/.local/bin/pigui)
   package.json / .npmrc   Electron dependency + mirror
   CHANGELOG.md            what changed when, plus architecture notes
   dev/react-smoke.mjs     React UI end-to-end smoke test (own server + Chrome; `npm test`)

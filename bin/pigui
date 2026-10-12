@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# One-command launcher for the pi GUI.
+#
+#   pigui                    # desktop GUI, pi runs in $PWD
+#   pigui --web              # browser UI instead of the Electron window
+#   pigui --cwd ~/proj       # run pi in another directory
+#   pigui -- --no-session    # args after -- are forwarded to pi
+#   pigui --rebuild          # force a frontend rebuild first
+#
+# Install it on PATH with `npm run link` (symlinks into ~/.local/bin).
+set -euo pipefail
+
+# resolve symlinks so the command works from ~/.local/bin/pigui
+SELF="$0"
+while [ -L "$SELF" ]; do
+  TARGET="$(readlink "$SELF")"
+  case "$TARGET" in
+    /*) SELF="$TARGET" ;;
+    *) SELF="$(cd "$(dirname "$SELF")" && pwd)/$TARGET" ;;
+  esac
+done
+DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+WEB=0
+REBUILD=0
+PASS=()
+for arg in "$@"; do
+  case "$arg" in
+    --web) WEB=1 ;;
+    --rebuild) REBUILD=1 ;;
+    *) PASS+=("$arg") ;;
+  esac
+done
+
+# The packaged UI lives in dist/; build it if missing or asked.
+if [ "$REBUILD" = 1 ] || [ ! -f "$DIR/dist/index.html" ]; then
+  echo "• building the pi GUI frontend…" >&2
+  ( cd "$DIR" && npm run build >&2 )
+fi
+
+# Forward args only when there are any (bash 3.2 + set -u friendly).
+if [ "$WEB" = 1 ]; then
+  echo "• pi GUI (browser) for ${PI_GUI_CWD:-$PWD}" >&2
+  if [ "${#PASS[@]}" -gt 0 ]; then exec "$DIR/start.sh" "${PASS[@]}"; fi
+  exec "$DIR/start.sh"
+fi
+
+echo "• pi GUI (desktop) for ${PI_GUI_CWD:-$PWD}" >&2
+if [ "${#PASS[@]}" -gt 0 ]; then exec "$DIR/start-desktop.sh" "${PASS[@]}"; fi
+exec "$DIR/start-desktop.sh"
