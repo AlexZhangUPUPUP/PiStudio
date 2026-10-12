@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>π GUI</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230969da'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='sans-serif'%3E%CF%80%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar" class="sidebar" aria-label="Sessions">
+        <div class="sb-head">
+          <span class="sb-brand"><span class="logo sm">π</span><span class="sb-brand-text">pi GUI</span></span>
+          <button id="btn-sidebar-close" class="ghost tiny" data-i18n-title="sidebar.collapse" aria-label="Collapse sidebar">«</button>
+        </div>
+        <button id="sb-new" class="sb-new" data-i18n="sidebar.newSession">＋ New session</button>
+        <input id="sb-search" type="text" class="sb-search" data-i18n-placeholder="sidebar.search" />
+        <div id="sb-groupby" class="sb-groupby" role="group" data-i18n-title="sidebar.groupBy">
+          <button type="button" data-by="workspace" class="on" aria-pressed="true" data-i18n="sidebar.byWorkspace">Workspace</button>
+          <button type="button" data-by="time" aria-pressed="false" data-i18n="sidebar.byTime">Time</button>
+        </div>
+        <div id="sb-list" class="sb-list"></div>
+        <div id="sb-footer" class="sb-footer" data-i18n-title="sidebar.footerTitle"></div>
+      </aside>
+
+      <div id="main">
+      <header id="toolbar">
+        <div class="left">
+          <button id="btn-sidebar" class="ghost" data-i18n-title="sidebar.toggle" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
+          <span id="cwd" class="cwd" data-i18n-title="toolbar.cwd"></span>
+        </div>
+        <div class="right">
+          <div id="model-picker" class="picker">
+            <button id="picker-btn" class="picker-btn" aria-haspopup="listbox" aria-expanded="false" data-i18n-title="toolbar.picker">
+              <span id="picker-model">…</span>
+              <span class="picker-sep">·</span>
+              <span id="picker-think">…</span>
+              <span class="picker-caret">▾</span>
+            </button>
+            <div id="picker-pop" class="picker-pop hidden" role="listbox">
+              <div class="picker-col">
+                <div class="picker-head" data-i18n="toolbar.modelGroup">Model</div>
+                <div id="picker-models" class="picker-list"></div>
+              </div>
+              <div class="picker-col">
+                <div class="picker-head" data-i18n="toolbar.thinkGroup">Thinking</div>
+                <div id="picker-thinks" class="picker-list"></div>
+              </div>
+            </div>
+          </div>
+          <select id="model" class="hidden" data-i18n-title="toolbar.model"></select>
+          <select id="thinking" class="hidden" data-i18n-title="toolbar.thinking"></select>
+          <button id="btn-changes" class="ghost icon-btn" data-i18n-title="changes.title" aria-label="Changes">
+            <span class="icon">Δ</span><span id="changes-badge" class="badge hidden"></span>
+          </button>
+          <button id="btn-settings" class="ghost" data-i18n-title="settings.title" aria-label="Settings">⚙</button>
+          <button id="btn-new" class="ghost" data-i18n="common.new" title="Start a new session">＋ New</button>
+          <button id="btn-stop" class="ghost danger" data-i18n="common.stop" title="Abort current run" disabled>
+            ■ Stop
+          </button>
+        </div>
+      </header>
+
+      <div id="body">
+        <main id="chat" class="scroll-region" role="log" aria-label="Conversation" tabindex="0"></main>
+
+        <aside id="trace" class="dock hidden" aria-label="Dock">
+          <div
+            id="dock-resize"
+            class="dock-resize"
+            role="separator"
+            aria-orientation="vertical"
+            tabindex="0"
+            data-i18n-title="dock.resize"
+          ></div>
+
+          <div class="dock-head">
+            <div class="tabs" id="dock-tabs" role="tablist">
+              <button class="tab active" role="tab" data-dock="trace" aria-selected="true" data-i18n="dock.trace">Trace</button>
+              <button class="tab" role="tab" data-dock="changes" aria-selected="false" data-i18n="dock.changes">Changes</button>
+              <button class="tab" role="tab" data-dock="context" aria-selected="false" data-i18n="dock.context">Context</button>
+            </div>
+            <span class="spacer"></span>
+            <button id="btn-trace-close" class="ghost tiny" data-i18n-title="common.close" aria-label="Close">✕</button>
+          </div>
+
+          <!-- ------------------------------------------------------- trace -->
+          <section id="dock-pane-trace" class="dock-pane">
+            <div class="dock-sub">
+              <span id="trace-file" class="trace-file"></span>
+              <span class="spacer"></span>
+              <label class="trace-opt" data-i18n-title="trace.deltasHint">
+                <input type="checkbox" id="trace-deltas" /> <span data-i18n="trace.deltas">deltas</span>
+              </label>
+              <label class="trace-opt" data-i18n-title="trace.followHint">
+                <input type="checkbox" id="trace-follow" checked /> <span data-i18n="trace.follow">follow</span>
+              </label>
+              <select id="trace-history" data-i18n-title="trace.history">
+                <option value="" data-i18n="trace.current">current</option>
+              </select>
+              <button id="btn-trace-clear" class="ghost tiny" data-i18n="common.clear">clear</button>
+              <button id="btn-trace-export" class="ghost tiny" data-i18n="common.export">export</button>
+            </div>
+            <div id="trace-list" class="scroll-region" role="region" aria-label="Trace" tabindex="0"></div>
+          </section>
+
+          <!-- ----------------------------------------------------- changes -->
+          <section id="dock-pane-changes" class="dock-pane hidden">
+            <div class="dock-sub">
+              <input id="changes-search" type="text" data-i18n-placeholder="changes.filter" />
+              <label class="trace-opt" data-i18n-title="changes.sessionOnlyTitle">
+                <input type="checkbox" id="changes-session-only" checked />
+                <span data-i18n="changes.sessionOnly">this session only</span>
+              </label>
+              <span class="spacer"></span>
+              <span id="changes-count" class="filter-count"></span>
+              <button id="btn-changes-refresh" class="ghost tiny" data-i18n="common.refresh">refresh</button>
+            </div>
+            <div id="changes-totals" class="dock-totals" data-i18n-title="changes.hint"></div>
+            <div id="changes-list" class="change-list scroll-region" role="region" aria-label="Changed files" tabindex="0"></div>
+            <div class="dock-diff">
+              <div class="dock-sub">
+                <span id="changes-diff-path" class="mono change-path"></span>
+                <span class="spacer"></span>
+                <span id="changes-diff-stat" class="filter-count"></span>
+                <button id="btn-changes-revert" class="ghost tiny danger" data-i18n="changes.revert" disabled>Revert file</button>
+              </div>
+              <pre id="changes-diff" class="out change-diff"></pre>
+            </div>
+          </section>
+
+          <!-- ----------------------------------------------------- context -->
+          <section id="dock-pane-context" class="dock-pane hidden">
+            <div class="dock-sub">
+              <span id="dock-context-title" class="trace-file" data-i18n="dock.contextHint"></span>
+              <span class="spacer"></span>
+              <button id="btn-context-refresh" class="ghost tiny" data-i18n="common.refresh">refresh</button>
+            </div>
+            <div id="dock-context-body" class="inspect-body scroll-region" role="region" aria-label="Context" tabindex="0"></div>
+          </section>
+        </aside>
+      </div>
+
+      <div id="widgets-above" class="widgets"></div>
+
+      <div id="attachments" class="attachments hidden"></div>
+
+      <div id="composer">
+        <button id="btn-attach" class="ghost attach" data-i18n-title="composer.attach">📎</button>
+        <textarea id="input" rows="1" data-i18n-placeholder="composer.placeholder"></textarea>
+        <span id="hist-hint" class="hist-hint"></span>
+        <button id="btn-send" class="primary" data-i18n="common.send">Send</button>
+        <input type="file" id="file-input" accept="image/*" multiple hidden />
+      </div>
+
+      <div id="widgets-below" class="widgets"></div>
+
+      <div id="statusbar" role="status" aria-live="polite">
+        <span id="run-state" class="run-state"></span>
+        <span id="status"></span>
+        <span id="ext-status" class="ext-status"></span>
+        <span id="stats" data-i18n-title="toolbar.usage"></span>
+      </div>
+      </div>
+    </div>
+
+    <div id="ac" class="ac hidden" role="listbox" aria-label="Suggestions"></div>
+    <button id="to-latest" class="ghost" data-i18n="chat.toLatest">↓ latest</button>
+
+    <div id="a11y-announcer" class="sr-only" role="status" aria-live="polite"></div>
+    <div id="modal-root"></div>
+    <div id="toasts"></div>
+
+    <div id="sessions" class="sessions hidden">
+      <div class="sessions-panel">
+        <div class="sessions-head">
+          <span id="sessions-title" class="sessions-title" data-i18n="common.sessions">Sessions</span>
+          <div class="tabs">
+            <button class="tab active" data-tab="tree" data-i18n="sessions.tab.tree">Branch tree</button>
+            <button class="tab" data-tab="list" data-i18n="sessions.tab.list">Saved sessions</button>
+          </div>
+          <span class="spacer"></span>
+          <button id="btn-sessions-refresh" class="ghost tiny" data-i18n="common.refresh">refresh</button>
+          <button id="btn-sessions-close" class="ghost tiny" data-i18n-title="common.close" aria-label="Close">✕</button>
+        </div>
+        <div id="session-info" class="session-info"></div>
+        <div class="sessions-body">
+          <div id="tree-pane" class="pane">
+            <div class="filter-bar">
+              <input id="tree-search" type="text" data-i18n-placeholder="sessions.tree.search" />
+              <div class="chips" id="tree-roles">
+                <button class="chip on" data-role="user" data-i18n="role.user">user</button>
+                <button class="chip on" data-role="assistant" data-i18n="role.assistant">assistant</button>
+                <button class="chip on" data-role="tool" data-i18n="role.tool">tool</button>
+                <button class="chip on" data-role="meta" data-i18n="role.meta">meta</button>
+                <button class="chip on" data-role="custom" data-i18n="role.custom">custom</button>
+              </div>
+              <label class="trace-opt" title="Hide everything that is not on the current branch">
+                <input type="checkbox" id="tree-active-only" />
+                <span data-i18n="sessions.tree.activeOnly">active path only</span>
+              </label>
+              <span class="spacer"></span>
+              <span id="tree-count" class="filter-count"></span>
+            </div>
+            <div id="tree-view" class="tree-view"></div>
+          </div>
+          <div id="list-pane" class="pane hidden">
+            <div class="filter-bar">
+              <input id="list-search" type="text" data-i18n-placeholder="sessions.list.search" />
+              <select id="list-range" title="Time range">
+                <option value="all" data-i18n="sessions.list.range.all">any time</option>
+                <option value="1" data-i18n="sessions.list.range.1">today</option>
+                <option value="7" data-i18n="sessions.list.range.7">last 7 days</option>
+                <option value="30" data-i18n="sessions.list.range.30">last 30 days</option>
+              </select>
+              <select id="list-sort" title="Sort order">
+                <option value="new" data-i18n="sessions.list.sort.new">newest</option>
+                <option value="old" data-i18n="sessions.list.sort.old">oldest</option>
+                <option value="big" data-i18n="sessions.list.sort.big">largest</option>
+                <option value="entries" data-i18n="sessions.list.sort.entries">most entries</option>
+              </select>
+              <label class="trace-opt" title="Only sessions with a name">
+                <input type="checkbox" id="list-named" />
+                <span data-i18n="sessions.list.namedOnly">named only</span>
+              </label>
+              <span class="spacer"></span>
+              <span id="list-count" class="filter-count"></span>
+            </div>
+            <div id="list-view" class="list-view"></div>
+          </div>
+        </div>
+        <div class="sessions-foot">
+          <div class="foot-row">
+            <input id="session-name-input" type="text" data-i18n-placeholder="sessions.namePlaceholder" />
+            <button id="btn-session-rename" class="ghost" data-i18n="sessions.rename">Rename</button>
+            <span class="spacer"></span>
+            <button id="btn-session-clone" class="ghost" data-i18n="sessions.clone">Clone branch</button>
+            <button id="btn-session-export" class="ghost" data-i18n="sessions.export">Export HTML</button>
+          </div>
+          <div class="foot-row">
+            <span id="session-selection" class="session-selection" data-i18n="sessions.selectNode">select a node…</span>
+            <input id="label-input" type="text" data-i18n-placeholder="sessions.labelPlaceholder" />
+            <button id="btn-session-label" class="ghost" data-i18n="sessions.bookmark" disabled>Bookmark</button>
+            <button id="btn-session-unlabel" class="ghost" data-i18n="sessions.unbookmark" disabled>Remove bookmark</button>
+            <span class="spacer"></span>
+            <button id="btn-session-fork" class="ghost" data-i18n="sessions.fork" disabled>Fork from selected</button>
+          </div>
+          <div class="foot-hint" data-i18n="sessions.hint">
+            Session history is append-only — individual nodes can't be deleted, only whole session files (Saved sessions →
+            delete).
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="inspect" class="sessions hidden">
+      <div class="sessions-panel inspect-panel">
+        <div class="sessions-head">
+          <span id="inspect-title" class="sessions-title" data-i18n="inspect.title">Inspector</span>
+          <div class="tabs" id="inspect-tabs">
+            <button class="tab active" data-itab="prompt" data-i18n="inspect.tab.prompt">System prompt</button>
+            <button class="tab" data-itab="context" data-i18n="inspect.tab.context">Context</button>
+            <button class="tab" data-itab="requests" data-i18n="inspect.tab.requests">Requests</button>
+            <button class="tab" data-itab="session" data-i18n="inspect.tab.session">Session file</button>
+            <button class="tab" data-itab="caps" data-i18n="inspect.tab.caps">Capabilities</button>
+            <button class="tab" data-itab="replay" data-i18n="inspect.tab.replay">Replay</button>
+            <button class="tab" data-itab="agents" data-i18n="inspect.tab.agents">Agents</button>
+          </div>
+          <span class="spacer"></span>
+          <select id="inspect-agent" data-i18n-title="inspect.agents.pick"></select>
+          <span id="inspect-count" class="filter-count"></span>
+          <button id="btn-inspect-refresh" class="ghost tiny" data-i18n="common.refresh">refresh</button>
+          <button id="btn-inspect-close" class="ghost tiny" data-i18n-title="common.close">✕</button>
+        </div>
+        <div id="inspect-body" class="inspect-body scroll-region" role="region" aria-label="Inspector" tabindex="0"></div>
+      </div>
+    </div>
+
+    <script src="/i18n.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

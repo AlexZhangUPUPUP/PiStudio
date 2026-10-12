@@ -1,0 +1,44 @@
+{
+  "name": "pi-gui",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Web + desktop GUI for pi (drives `pi --mode rpc`)",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "desktop": "electron .",
+    "web": "node server.js",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node dev/react-smoke.mjs",
+    "test:quick": "node dev/react-smoke.mjs --no-chat",
+    "package": "npm run build && node dev/package.mjs",
+    "package:app": "npm run build && node dev/package.mjs --app-only"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "autoprefixer": "^10.6.1",
+    "electron": "^44.3.0",
+    "postcss": "^8.5.29",
+    "tailwindcss": "^3.4.19",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "@radix-ui/react-scroll-area": "^1.3.0",
+    "@radix-ui/react-separator": "^1.1.16",
+    "@radix-ui/react-slot": "^1.4.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.54.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.7.0"
+  }
+}

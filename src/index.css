@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+      'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
+      'Microsoft YaHei', sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+      'Liberation Mono', monospace;
+
+    --background: 210 20% 98%;
+    --foreground: 220 26% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 26% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 26% 14%;
+    --primary: 220 26% 14%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 220 26% 14%;
+    --muted: 210 20% 94%;
+    --muted-foreground: 220 10% 40%;
+    --accent: 174 62% 56%;
+    --accent-foreground: 220 26% 14%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 210 20% 90%;
+    --input: 210 20% 90%;
+    --ring: 174 62% 56%;
+    --radius: 0.75rem;
+    --coral: 355 70% 78%;
+    --teal: 174 62% 56%;
+    --gold: 48 93% 66%;
+  }
+
+  .dark {
+    --background: 220 20% 7%;
+    --foreground: 210 20% 96%;
+    --card: 220 18% 10%;
+    --card-foreground: 210 20% 96%;
+    --popover: 220 18% 10%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 174 62% 56%;
+    --primary-foreground: 220 26% 10%;
+    --secondary: 220 14% 16%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 220 14% 16%;
+    --muted-foreground: 215 15% 62%;
+    --accent: 220 14% 18%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 14% 18%;
+    --input: 220 14% 20%;
+    --ring: 174 62% 56%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    overflow: hidden;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
+
+/* ------------------------------------------------------------ desktop shell */
+/* In Electron the window provides the frame: a hidden title bar, the system
+   material behind the sidebar, and draggable chrome. Mirrors the legacy
+   public/style.css `is-electron` rules. */
+html.is-electron,
+html.is-electron body,
+html.is-electron #root {
+  background: transparent;
+}
+html.is-electron .pi-sidebar {
+  /* the OS vibrancy material shows through here */
+  background: transparent;
+}
+/* always paint the theme background in the content column, so a light app
+   theme is never left showing a dark native window behind it */
+html.is-electron .pi-main {
+  background: hsl(var(--background));
+}
+html.is-electron .pi-sidebar-head {
+  padding-top: 38px; /* the macOS traffic lights own the top-left corner */
+}
+html.is-electron .pi-toolbar,
+html.is-electron .pi-statusbar {
+  -webkit-app-region: drag;
+}
+/* with the sidebar folded away the toolbar sits under the traffic lights */
+html.is-electron .pi-root.pi-sidebar-collapsed .pi-toolbar {
+  padding-left: 84px;
+}
+html.is-electron button,
+html.is-electron input,
+html.is-electron select,
+html.is-electron textarea,
+html.is-electron a,
+html.is-electron [role='button'] {
+  -webkit-app-region: no-drag;
+}
