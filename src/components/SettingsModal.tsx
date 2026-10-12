@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { FileCode, FileText, MessageSquarePlus, Trash2, X } from 'lucide-react'
+import { FileCode, FileText, MessageSquarePlus, Puzzle, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { usePi } from '@/store/pi'
@@ -204,6 +204,23 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 applyLayout(v)
               }}
             />
+          </Section>
+
+          <Separator />
+
+          {/* Extensions */}
+          <Section label={t('ext.title')}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onClose()
+                window.dispatchEvent(new CustomEvent('pi-gui:open-extensions'))
+              }}
+            >
+              <Puzzle className="size-4" />
+              {t('ext.title')}
+            </Button>
           </Section>
 
           <Separator />

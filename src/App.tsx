@@ -15,6 +15,8 @@ import { MessageBubble } from '@/components/chat/MessageBubble'
 import { Composer } from '@/components/chat/Composer'
 import { StatusBar } from '@/components/chat/StatusBar'
 import { ModelPicker } from '@/components/ModelPicker'
+import { ToolsBadge } from '@/components/ToolsBadge'
+import ExtensionsModal from '@/components/ExtensionsModal'
 import { Sidebar } from '@/components/Sidebar'
 import Dock from '@/components/dock/Dock'
 import SessionsModal from '@/components/panels/SessionsModal'
@@ -56,6 +58,7 @@ export default function App() {
   const [sessionsOpen, setSessionsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [extensionsOpen, setExtensionsOpen] = useState(false)
   const [changesCount, setChangesCount] = useState(0)
   const [themeMode, setThemeMode] = useState(getTheme)
   const [, forceTheme] = useState(0)
@@ -104,6 +107,7 @@ export default function App() {
       'pi-gui:set-layout': onLayout,
       'pi-gui:open-sessions': onSessions,
       'pi-gui:open-settings': onSettings,
+      'pi-gui:open-extensions': () => setExtensionsOpen(true),
       'pi-gui:open-trace': () => onDock('trace'),
       'pi-gui:open-changes': () => onDock('changes'),
       'pi-gui:open-context': () => onDock('context'),
@@ -242,6 +246,7 @@ export default function App() {
 
           <div className="ml-auto flex items-center gap-1.5">
             <ModelPicker />
+            <ToolsBadge />
 
             <Button
               variant="ghost"
@@ -420,6 +425,7 @@ export default function App() {
       <SessionsModal open={sessionsOpen} onClose={() => setSessionsOpen(false)} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ExtensionsModal open={extensionsOpen} onClose={() => setExtensionsOpen(false)} />
       <ExtensionDialogs />
       <Toasts />
 

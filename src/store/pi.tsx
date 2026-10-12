@@ -98,6 +98,7 @@ export interface PiState {
   assistantStartedAt: number
   lastTps: number
   toolSchemas: Record<string, { name?: string; description?: string; parameters?: unknown; source?: unknown }>
+  activeTools: string[]
 }
 
 const initialState: PiState = {
@@ -122,6 +123,7 @@ const initialState: PiState = {
   assistantStartedAt: 0,
   lastTps: 0,
   toolSchemas: {},
+  activeTools: [],
 }
 
 /* --------------------------------------------------------------- bus/events */
@@ -479,7 +481,11 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
         for (const tool of e.data.tools) {
           if (tool && tool.name) next[tool.name] = tool
         }
-        return { ...state, toolSchemas: next }
+        return {
+          ...state,
+          toolSchemas: next,
+          activeTools: Array.isArray(e.data.activeTools) ? e.data.activeTools : state.activeTools,
+        }
       }
       return state
     }

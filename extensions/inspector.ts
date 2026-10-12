@@ -70,6 +70,11 @@ export default function (pi: ExtensionAPI) {
   /* ---- what pi decides to tell the model --------------------------------- */
 
   pi.on("before_agent_start", (event) => {
+    // first reliable point where the tool set is registered and active
+    if (!reportedInventory) {
+      reportedInventory = true;
+      reportInventory("agent_start");
+    }
     const o: any = event.systemPromptOptions || {};
     post("system_prompt", {
       prompt: clip(event.prompt, 4000),
@@ -146,17 +151,23 @@ export default function (pi: ExtensionAPI) {
     return undefined;
   };
 
+  let reportedInventory = false;
   const reportInventory = (reason: string) => {
     let tools: any[] = [];
     let commands: any[] = [];
+    let activeTools: string[] = [];
     try {
       tools = (pi as any).getAllTools?.() || [];
     } catch {}
     try {
       commands = (pi as any).getCommands?.() || [];
     } catch {}
+    try {
+      activeTools = (pi as any).getActiveTools?.() || [];
+    } catch {}
     post("inventory", {
       reason,
+      activeTools,
       tools: tools.map((t) => ({
         name: t?.name,
         description: t?.description,

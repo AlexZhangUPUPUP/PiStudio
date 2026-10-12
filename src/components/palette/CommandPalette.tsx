@@ -185,6 +185,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
       { label: t('common.copy'), hint: t('settings.conversation'), run: () => void copyConversation() },
       { label: t('sidebar.toggle'), hint: '', run: () => window.dispatchEvent(new CustomEvent('pi-gui:toggle-sidebar')) },
       { label: t('settings.title'), hint: '', run: () => window.dispatchEvent(new CustomEvent('pi-gui:open-settings')) },
+      { label: t('ext.title'), hint: '', run: () => window.dispatchEvent(new CustomEvent('pi-gui:open-extensions')) },
       { label: t('palette.diagnostics'), hint: '', run: () => void openDiagnostics() },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps

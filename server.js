@@ -70,6 +70,9 @@ const GUI_EXTENSION = path.join(__dirname, 'extensions', 'gui-bridge.ts');
 const INSPECTOR_EXTENSION = path.join(__dirname, 'extensions', 'inspector.ts');
 const NO_GUI_EXTENSION = argv.includes('--no-gui-extension');
 const NO_INSPECTOR = argv.includes('--no-inspector');
+// runtime-toggleable from the GUI (see /api/extensions/toggle)
+let guiBridgeDisabled = NO_GUI_EXTENSION;
+let inspectorDisabled = NO_INSPECTOR;
 const INSPECT_KEEP = 400;
 const SESSION_IDLE_MS = Math.max(60_000, Number(opt('session-idle', process.env.PI_GUI_SESSION_IDLE || 10 * 60_000)));
 
@@ -347,8 +350,8 @@ function startPi(sess) {
   process.stderr.write(`[pi-gui] session ${sess.id}: trace ${sess.traceFile}\n`);
 
   const launchArgs = ['--mode', 'rpc'];
-  if (!NO_GUI_EXTENSION && fs.existsSync(GUI_EXTENSION)) launchArgs.push('--extension', GUI_EXTENSION);
-  if (!NO_INSPECTOR && fs.existsSync(INSPECTOR_EXTENSION)) launchArgs.push('--extension', INSPECTOR_EXTENSION);
+  if (!guiBridgeDisabled && fs.existsSync(GUI_EXTENSION)) launchArgs.push('--extension', GUI_EXTENSION);
+  if (!inspectorDisabled && fs.existsSync(INSPECTOR_EXTENSION)) launchArgs.push('--extension', INSPECTOR_EXTENSION);
   launchArgs.push(...PI_ARGS);
 
   sess.child = spawn(PI_BIN, launchArgs, {
@@ -539,6 +542,65 @@ function addInspect(sess, rec) {
 
 function sessionsDir(cwd) {
   return path.join(SESSIONS_ROOT, '--' + cwd.replace(/^\/+/, '').replace(/\//g, '-') + '--');
+}
+
+/* ---------------------------------------------------- extensions (for GUI) */
+
+/** Auto-discovered extensions in the global and project locations. */
+function discoverExtensions() {
+  const home = require('os').homedir();
+  const roots = [
+    { scope: 'global', dir: path.join(home, '.pi', 'agent', 'extensions') },
+    { scope: 'project', dir: path.join(CWD, '.pi', 'extensions') },
+  ];
+  const out = [];
+  for (const { scope, dir } of roots) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      const full = path.join(dir, e.name);
+      let isDir = e.isDirectory();
+      let isFile = e.isFile();
+      const link = e.isSymbolicLink();
+      if (link) {
+        try {
+          const st = fs.statSync(full);
+          isDir = st.isDirectory();
+          isFile = st.isFile();
+        } catch {}
+      }
+      if (isFile && e.name.endsWith('.ts')) out.push({ scope, name: e.name, path: full, kind: 'file', link });
+      else if (isDir) {
+        const idx = path.join(full, 'index.ts');
+        if (fs.existsSync(idx)) out.push({ scope, name: e.name, path: idx, kind: 'dir', link });
+      }
+    }
+  }
+  return out;
+}
+
+/** Extra extension/package paths declared in pi settings.json. */
+function readSettingsExtras() {
+  const home = require('os').homedir();
+  const files = [
+    path.join(home, '.pi', 'agent', 'settings.json'),
+    path.join(CWD, '.pi', 'settings.json'),
+  ];
+  const extensions = [];
+  const packages = [];
+  for (const f of files) {
+    try {
+      const s = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (Array.isArray(s.extensions)) extensions.push(...s.extensions);
+      if (Array.isArray(s.packages)) packages.push(...s.packages);
+    } catch {}
+  }
+  return { extensions, packages };
 }
 
 function readFirstChunk(file, maxBytes = 384 * 1024) {
@@ -1391,6 +1453,29 @@ const server = http.createServer((req, res) => {
       })}\n\n`,
     );
 
+    // Late clients still need the inspector's one-shot captures (inventory,
+    // agents): those go through broadcast(), which is not replayed like the
+    // trace buffer, so a client that connects after startup would miss them.
+    for (const rec of sess.inspect) {
+      try {
+        res.write(
+          `data: ${JSON.stringify({
+            type: '__inspect',
+            kind: rec.kind,
+            at: rec.at,
+            data: rec.data,
+            agent: rec.agent,
+            __replay: true,
+          })}\n\n`,
+        );
+      } catch {}
+    }
+    for (const a of sess.agents.values()) {
+      try {
+        res.write(`data: ${JSON.stringify({ type: '__agent', event: 'start', agent: a })}\n\n`);
+      } catch {}
+    }
+
     // A client that reconnects can ask for everything it missed. If the buffer
     // already dropped part of that range, say so and let the client fully resync.
     const since = Number(url.searchParams.get('since') || 0);
@@ -1511,6 +1596,37 @@ const server = http.createServer((req, res) => {
       records,
       agents: [...sess.agents.values()],
     });
+  }
+
+  if (p === '/api/extensions') {
+    return sendJson(res, 200, {
+      gui: [
+        { key: 'gui-bridge', path: GUI_EXTENSION, enabled: !guiBridgeDisabled, exists: fs.existsSync(GUI_EXTENSION) },
+        { key: 'inspector', path: INSPECTOR_EXTENSION, enabled: !inspectorDisabled, exists: fs.existsSync(INSPECTOR_EXTENSION) },
+      ],
+      discovered: discoverExtensions(),
+      settings: readSettingsExtras(),
+      cwd: CWD,
+    });
+  }
+
+  if (p === '/api/extensions/toggle' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let b = {};
+      try {
+        b = JSON.parse(body);
+      } catch {}
+      if (b.key === 'gui-bridge') guiBridgeDisabled = !b.enabled;
+      else if (b.key === 'inspector') inspectorDisabled = !b.enabled;
+      else return sendJson(res, 400, { error: 'unknown extension key' });
+      // the flag only takes effect on (re)spawn, so restart this session's pi
+      const sess = ensureSession(cid);
+      stopPi(sess, () => {
+        startPi(sess);
+        sendJson(res, 200, { ok: true, key: b.key, enabled: !!b.enabled });
+      });
+    });
+    return;
   }
 
   if (p === '/api/agents') {
