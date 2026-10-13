@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# One-command launcher for the pi GUI.
+# One-command launcher for PiStudio (the pi GUI).
 #
-#   pigui                    # desktop GUI, pi runs in $PWD
-#   pigui --web              # browser UI instead of the Electron window
-#   pigui --cwd ~/proj       # run pi in another directory
-#   pigui -- --no-session    # args after -- are forwarded to pi
-#   pigui --rebuild          # force a frontend rebuild first
-#   pigui --help             # show this help
+#   pistudio                 # desktop GUI, pi runs in $PWD
+#   pistudio --web           # browser UI instead of the Electron window
+#   pistudio --cwd ~/proj    # run pi in another directory
+#   pistudio -- --no-session # args after -- are forwarded to pi
+#   pistudio --rebuild       # force a frontend rebuild first
+#   pistudio --help          # show this help
 #
 # When stdout is not a terminal (e.g. started by a tool or script) the GUI is
 # launched detached, so the caller is not blocked until the window is closed.
@@ -14,7 +14,7 @@
 # Install it on PATH with `npm run link` (symlinks into ~/.local/bin).
 set -euo pipefail
 
-# resolve symlinks so the command works from ~/.local/bin/pigui
+# resolve symlinks so the command works from ~/.local/bin/pistudio
 SELF="$0"
 while [ -L "$SELF" ]; do
   TARGET="$(readlink "$SELF")"
@@ -27,14 +27,14 @@ DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
 
 usage() {
   cat <<'EOF'
-pi GUI launcher
+PiStudio launcher
 
-  pigui                    desktop GUI, pi runs in $PWD
-  pigui --web              browser UI instead of the Electron window
-  pigui --cwd ~/proj       run pi in another directory
-  pigui -- --no-session    args after -- are forwarded to pi
-  pigui --rebuild          force a frontend rebuild first
-  pigui --help             show this help
+  pistudio                  desktop GUI, pi runs in $PWD
+  pistudio --web            browser UI instead of the Electron window
+  pistudio --cwd ~/proj     run pi in another directory
+  pistudio -- --no-session  args after -- are forwarded to pi
+  pistudio --rebuild        force a frontend rebuild first
+  pistudio --help           show this help
 
 Env: PI_GUI_CWD overrides the working directory pi is started in.
 EOF
@@ -45,7 +45,7 @@ EOF
 launch() {
   local script="$1"; shift
   if [ ! -t 1 ]; then
-    local log="${TMPDIR:-/tmp}/pigui.log"
+    local log="${TMPDIR:-/tmp}/pistudio.log"
     nohup "$script" "$@" >"$log" 2>&1 </dev/null &
     local pid=$!
     disown 2>/dev/null || true
@@ -78,17 +78,17 @@ fi
 
 # The packaged UI lives in dist/; build it if missing or asked.
 if [ "$REBUILD" = 1 ] || [ ! -f "$DIR/dist/index.html" ]; then
-  echo "• building the pi GUI frontend…" >&2
+  echo "• building the PiStudio frontend…" >&2
   ( cd "$DIR" && npm run build >&2 )
 fi
 
 # Forward args only when there are any (bash 3.2 + set -u friendly).
 if [ "$WEB" = 1 ]; then
-  echo "• pi GUI (browser) for ${PI_GUI_CWD:-$PWD}" >&2
+  echo "• PiStudio (browser) for ${PI_GUI_CWD:-$PWD}" >&2
   if [ "${#PASS[@]}" -gt 0 ]; then launch "$DIR/start.sh" "${PASS[@]}"; else launch "$DIR/start.sh"; fi
   exit 0
 fi
 
-echo "• pi GUI (desktop) for ${PI_GUI_CWD:-$PWD}" >&2
+echo "• PiStudio (desktop) for ${PI_GUI_CWD:-$PWD}" >&2
 if [ "${#PASS[@]}" -gt 0 ]; then launch "$DIR/start-desktop.sh" "${PASS[@]}"; else launch "$DIR/start-desktop.sh"; fi
 exit 0

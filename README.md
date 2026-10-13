@@ -1,4 +1,6 @@
-# π pi GUI
+# PiStudio
+
+**English** · [简体中文](README.zh-CN.md)
 
 A tiny GUI for [pi](https://pi.dev) — runs in the browser **or** as a desktop
 app. It spawns `pi --mode rpc` as a child process and bridges the JSON-RPC
@@ -484,17 +486,17 @@ npm install          # downloads Electron (mirror configured in .npmrc)
 > because the GitHub release download stalls on some networks. Delete it if the
 > official mirror works for you.
 
-### One command (`pigui`)
+### One command (`pistudio`)
 
 ```bash
-npm run link            # once: symlink ~/.local/bin/pigui (already on PATH)
-pigui                   # desktop GUI, pi runs in the current directory
-pigui --web             # the same in a browser tab
-pigui --cwd ~/proj      # run pi somewhere else
-pigui -- --no-session   # args after -- go to pi
+npm run link             # once: symlink ~/.local/bin/pistudio (already on PATH)
+pistudio                 # desktop GUI, pi runs in the current directory
+pistudio --web           # the same in a browser tab
+pistudio --cwd ~/proj    # run pi somewhere else
+pistudio -- --no-session # args after -- go to pi
 ```
 
-`bin/pigui` resolves its own symlink, builds `dist/` if it is missing, then hands
+`bin/pistudio` resolves its own symlink, builds `dist/` if it is missing, then hands
 off to `start-desktop.sh` (Electron, browser fallback) or `start.sh` (`--web`).
 The packaged `.app` can also be double-clicked: it remembers the last working
 folder in `userData/cwd.json` and falls back to your home directory.
@@ -512,22 +514,23 @@ Output lands in `release/`:
 
 ```
 release/
-  pi GUI-darwin-arm64/pi GUI.app   # the app bundle
-  pi-gui-arm64.dmg                 # installer (hdiutil)
+  PiStudio-darwin-arm64/PiStudio.app   # the app bundle
+  pistudio-arm64.dmg                   # installer (hdiutil)
 ```
 
-`dev/package.mjs` uses `@electron/packager` (unsigned) and ships only what runs:
+`dev/package.mjs` uses `@electron/packager` (ad-hoc signed) and ships only what runs:
 `electron/`, `server.js`, `extensions/`, `dist/` and `package.json` — `server.js`
 is zero-dependency, so `node_modules` is excluded, and `asar` is off because the
 server is spawned as a child process. The packaged app writes traces to
-`~/Library/Application Support/pi GUI/traces` and adds `~/.local/bin`,
+`~/Library/Application Support/PiStudio/traces` and adds `~/.local/bin`,
 `/opt/homebrew/bin` and `/usr/local/bin` to `PATH` so it finds `pi` when launched
 from Finder.
 
-Unsigned builds trip Gatekeeper on first open:
+Builds are ad-hoc signed (required for the app to launch at all on macOS). If
+Gatekeeper still complains on first open:
 
 ```bash
-xattr -dr com.apple.quarantine "release/pi GUI-darwin-arm64/pi GUI.app"
+xattr -dr com.apple.quarantine "release/PiStudio-darwin-arm64/PiStudio.app"
 ```
 
 ## Options
@@ -606,7 +609,7 @@ stats/usage and diagnostics. The original vanilla frontend is archived under
 ## Files
 
 ```
-pi-gui/
+pistudio/
   server.js               Node server: one pi process per tab, SSE, traces, sessions
   src/                    React + TypeScript frontend (Vite)
   index.html              Vite entry for the React UI
@@ -619,7 +622,7 @@ pi-gui/
   neobrutalist-ui-design/ source project the visual language was ported from
   start.sh                browser launcher
   start-desktop.sh        desktop launcher (Electron, browser fallback)
-  bin/pigui               one-command launcher (`npm run link` → ~/.local/bin/pigui)
+  bin/pistudio            one-command launcher (`npm run link` → ~/.local/bin/pistudio)
   package.json / .npmrc   Electron dependency + mirror
   CHANGELOG.md            what changed when, plus architecture notes
   dev/react-smoke.mjs     React UI end-to-end smoke test (own server + Chrome; `npm test`)

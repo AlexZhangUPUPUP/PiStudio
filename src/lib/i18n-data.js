@@ -1,5 +1,5 @@
 /* ==========================================================================
-   pi GUI — translations
+   PiStudio — translations
    Loaded before app.js. Add a language by adding another top-level key.
    Placeholders use {name} and are filled by t(key, vars).
    ========================================================================== */
@@ -282,7 +282,7 @@ window.PI_I18N = {
     'chat.modelErrorWith': 'Model error: {msg}',
     'chat.aborted': 'Aborted',
     'chat.newSession': 'New session started',
-    'chat.notSent': 'Not sent — the pi-gui server could not be reached. Your message was put back in the composer.',
+    'chat.notSent': 'Not sent — the PiStudio server could not be reached. Your message was put back in the composer.',
     'chat.promptRejected': 'pi rejected the prompt: {msg}',
     'chat.compacting': 'Compacting context ({reason})…',
     'chat.compacted': 'Compacted: {before} → ~{after} tokens',
@@ -319,8 +319,8 @@ window.PI_I18N = {
     /* ---- fatal banner ---- */
     'fatal.uiError': 'UI error: {msg}. Try a hard refresh (Cmd/Ctrl+Shift+R).',
     'fatal.fileProtocol':
-      'This page was opened as a local file, so it cannot reach the pi-gui server. Open http://127.0.0.1:4173/ instead.',
-    'fatal.serverHint': 'Could not reach the pi-gui server ({msg}). It may have been restarted.',
+      'This page was opened as a local file, so it cannot reach the PiStudio server. Open http://127.0.0.1:4173/ instead.',
+    'fatal.serverHint': 'Could not reach the PiStudio server ({msg}). It may have been restarted.',
     'fatal.serverCheck': 'Check:  curl http://127.0.0.1:4173/api/info   ·   restart:  ./start.sh',
 
     /* ---- trace panel ---- */
@@ -774,7 +774,7 @@ window.PI_I18N = {
     'chat.modelErrorWith': '模型错误：{msg}',
     'chat.aborted': '已中止',
     'chat.newSession': '已开始新会话',
-    'chat.notSent': '未发送 —— 无法连接 pi-gui 服务，消息已放回输入框。',
+    'chat.notSent': '未发送 —— 无法连接 PiStudio 服务，消息已放回输入框。',
     'chat.promptRejected': 'pi 拒绝了该提问：{msg}',
     'chat.compacting': '正在压缩上下文（{reason}）…',
     'chat.compacted': '已压缩：{before} → 约 {after} tokens',
@@ -810,8 +810,8 @@ window.PI_I18N = {
 
     /* ---- fatal banner ---- */
     'fatal.uiError': '界面错误：{msg}。请强制刷新（Cmd/Ctrl+Shift+R）。',
-    'fatal.fileProtocol': '此页面是以本地文件方式打开的，无法连接 pi-gui 服务。请改用 http://127.0.0.1:4173/',
-    'fatal.serverHint': '无法连接 pi-gui 服务（{msg}）。服务可能已重启。',
+    'fatal.fileProtocol': '此页面是以本地文件方式打开的，无法连接 PiStudio 服务。请改用 http://127.0.0.1:4173/',
+    'fatal.serverHint': '无法连接 PiStudio 服务（{msg}）。服务可能已重启。',
     'fatal.serverCheck': '检查：curl http://127.0.0.1:4173/api/info   ·   重启：./start.sh',
 
     /* ---- trace panel ---- */

@@ -483,7 +483,7 @@ export async function buildHtmlBundle(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} — pi GUI</title>
+<title>${esc(title)} — PiStudio</title>
 <style>${EXPORT_CSS}</style>
 </head>
 <body>

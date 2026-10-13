@@ -12,7 +12,7 @@
  *
  * Ad-hoc signed (no Developer ID here). Ad-hoc signing is required for the app
  * to launch at all on macOS; Gatekeeper may still warn on first open:
- *   xattr -dr com.apple.quarantine "release/pi-gui-darwin-<arch>/pi GUI.app"
+ *   xattr -dr com.apple.quarantine "release/PiStudio-darwin-<arch>/PiStudio.app"
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -22,7 +22,7 @@ import { packager } from '@electron/packager'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = path.join(ROOT, 'release')
-const APP_NAME = 'pi GUI'
+const APP_NAME = 'PiStudio'
 
 const IGNORE = [
   /^\/src($|\/)/,
@@ -61,7 +61,7 @@ async function main() {
     dir: ROOT,
     out: OUT,
     name: APP_NAME,
-    appBundleId: 'dev.pi.gui',
+    appBundleId: 'dev.pistudio',
     platform: 'darwin',
     arch: process.arch,
     asar: false, // server.js is spawned as a child; asar breaks that
@@ -76,7 +76,7 @@ async function main() {
   // Ad-hoc sign the bundle. Without this the app keeps only the linker's
   // ad-hoc signature (identifier "Electron", Info.plist unbound), which macOS
   // rejects at launch with:
-  //   bootstrap_look_up dev.pi.gui.MachPortRendezvousServer: Permission denied
+  //   bootstrap_look_up dev.pistudio.MachPortRendezvousServer: Permission denied
   console.log('• ad-hoc signing…')
   const sign = spawnSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' })
   if (sign.status !== 0) throw new Error('codesign failed')
@@ -89,7 +89,7 @@ async function main() {
     return
   }
 
-  const dmg = path.join(OUT, `pi-gui-${process.arch}.dmg`)
+  const dmg = path.join(OUT, `pistudio-${process.arch}.dmg`)
   console.log('• building dmg…')
   const res = spawnSync(
     'hdiutil',

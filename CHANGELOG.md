@@ -1,6 +1,6 @@
 # Changelog
 
-`pi-gui` — a browser + desktop GUI for [pi](https://pi.dev). The backend
+`PiStudio` — a browser + desktop GUI for [pi](https://pi.dev). The backend
 (`server.js`) is zero-dependency plain Node; the frontend is React + TypeScript +
 Vite + Tailwind (`src/` → built into `dist/`), with Electron only for the
 optional desktop shell.
@@ -12,6 +12,30 @@ local days the work happened rather than tagged releases. Newest first.
 - **Run (desktop):** `npm install && ./start-desktop.sh`
 - **Package (macOS):** `npm run package` → `.app` + `.dmg` in `release/`
 - **Tests:** `npm test` (`dev/react-smoke.mjs`, real headless Chrome)
+
+---
+
+## 2026-10-13 — renamed to PiStudio + packaging fixes
+
+### Changed
+- **the project is now `PiStudio`** (was `pi-gui`): window/app title, `README`,
+  `package.json`, the macOS bundle (`PiStudio.app`, bundle id `dev.pistudio`) and
+  the `.dmg` name. The CLI command is `pistudio` (`pigui` kept as an alias).
+  Internal identifiers (`pi-gui:*` events, `pi-gui-*` localStorage keys,
+  `x-pi-gui-token`, `PI_GUI_*` env vars) are unchanged.
+
+### Fixed
+- **`pistudio --help`** prints usage instead of launching the GUI; when stdout is
+  not a terminal the launcher detaches, so tools/scripts are not blocked until the
+  window is closed.
+- **macOS packaging** now ad-hoc signs the `.app` (`codesign --force --deep
+  --sign -`). Without it the bundle kept only the linker's ad-hoc signature and
+  macOS refused to launch it (`bootstrap_look_up …MachPortRendezvousServer:
+  Permission denied`).
+
+### Added
+- **`README.zh-CN.md`** — a Simplified Chinese translation, with a language
+  switcher in both READMEs.
 
 ---
 

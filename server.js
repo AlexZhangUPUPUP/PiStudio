@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * pi-gui — a tiny zero-dependency web GUI for pi.
+ * PiStudio — a tiny zero-dependency web GUI for pi.
  *
  * Spawns `pi --mode rpc` as a child process and exposes it to the browser.
  * Each browser tab gets its own pi process, keyed by the `c` query parameter
@@ -57,7 +57,7 @@ const PI_BIN = opt('pi', process.env.PI_BIN || 'pi');
 // retired; it lives in legacy/vanilla-ui/ for reference only.
 const PUBLIC_DIR = path.join(__dirname, 'dist');
 if (!fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))) {
-  process.stderr.write('[pi-gui] dist/index.html not found — run `npm run build` first\n');
+  process.stderr.write('[pistudio] dist/index.html not found — run `npm run build` first\n');
 }
 const TRACE_DIR = path.resolve(opt('trace-dir', process.env.PI_GUI_TRACE_DIR || path.join(__dirname, 'traces')));
 const MAX_BUFFER = 20000; // hard count cap
@@ -264,7 +264,7 @@ function newTraceFile(sess) {
   try {
     sess.traceStream = fs.createWriteStream(sess.traceFile, { flags: 'a' });
   } catch (err) {
-    process.stderr.write(`[pi-gui] cannot open trace file: ${err.message}\n`);
+    process.stderr.write(`[pistudio] cannot open trace file: ${err.message}\n`);
     sess.traceStream = null;
   }
   pruneTraces();
@@ -346,8 +346,8 @@ function attachJsonlReader(stream, onLine) {
 function startPi(sess) {
   if (sess.child) return;
   newTraceFile(sess);
-  process.stderr.write(`[pi-gui] session ${sess.id}: spawn ${PI_BIN} --mode rpc ${PI_ARGS.join(' ')} (cwd: ${CWD})\n`);
-  process.stderr.write(`[pi-gui] session ${sess.id}: trace ${sess.traceFile}\n`);
+  process.stderr.write(`[pistudio] session ${sess.id}: spawn ${PI_BIN} --mode rpc ${PI_ARGS.join(' ')} (cwd: ${CWD})\n`);
+  process.stderr.write(`[pistudio] session ${sess.id}: trace ${sess.traceFile}\n`);
 
   const launchArgs = ['--mode', 'rpc'];
   if (!guiBridgeDisabled && fs.existsSync(GUI_EXTENSION)) launchArgs.push('--extension', GUI_EXTENSION);
@@ -398,7 +398,7 @@ function startPi(sess) {
     sess.child = null;
     sess.pendingDialogs.clear();
     emit(sess, { type: '__proc', status: 'exit', code, signal });
-    process.stderr.write(`[pi-gui] session ${sess.id}: pi exited (code=${code} signal=${signal})\n`);
+    process.stderr.write(`[pistudio] session ${sess.id}: pi exited (code=${code} signal=${signal})\n`);
   });
 }
 
@@ -1770,8 +1770,8 @@ const server = http.createServer((req, res) => {
 
 server.on('error', (err) => {
   if (err && err.code === 'EADDRINUSE') {
-    process.stderr.write(`\n[pi-gui] port ${PORT} is already in use — another pi-gui is probably running.\n`);
-    process.stderr.write(`[pi-gui] stop it with:  pkill -f "pi/server.js"   (or use --port)\n\n`);
+    process.stderr.write(`\n[pistudio] port ${PORT} is already in use — another PiStudio is probably running.\n`);
+    process.stderr.write(`[pistudio] stop it with:  pkill -f "pi/server.js"   (or use --port)\n\n`);
     process.exit(1);
   }
   throw err;
@@ -1782,7 +1782,7 @@ const reaper = setInterval(() => {
   const now = Date.now();
   for (const [id, sess] of sessions) {
     if (sess.clients.size > 0 || now - sess.lastSeen < SESSION_IDLE_MS) continue;
-    process.stderr.write(`[pi-gui] reaping idle session ${id}\n`);
+    process.stderr.write(`[pistudio] reaping idle session ${id}\n`);
     sessions.delete(id);
     stopPi(sess, () => {});
   }
@@ -1795,7 +1795,7 @@ server.listen(PORT, HOST, () => {
   serverUrl = `http://${HOST === '0.0.0.0' || HOST === '::' ? '127.0.0.1' : HOST}:${actualPort}`;
   const suffix = AUTH_TOKEN ? `?token=${AUTH_TOKEN}` : '';
   const url = `${serverUrl}/${suffix}`;
-  process.stdout.write(`\n  π pi GUI running at ${url}\n  cwd:   ${CWD}\n\n`);
+  process.stdout.write(`\n  PiStudio running at ${url}\n  cwd:   ${CWD}\n\n`);
   process.stdout.write(
     `  pi processes are started per browser tab (idle ones are reaped after ${Math.round(SESSION_IDLE_MS / 60000)} min)\n`,
   );
@@ -1809,7 +1809,7 @@ server.listen(PORT, HOST, () => {
 });
 
 function shutdown() {
-  process.stdout.write('\n[pi-gui] shutting down\n');
+  process.stdout.write('\n[pistudio] shutting down\n');
   for (const sess of sessions.values()) {
     for (const res of sess.clients) {
       try {

@@ -439,7 +439,7 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
           return { ...state, widgets }
         }
         case 'setTitle':
-          if (typeof document !== 'undefined') document.title = req.title || 'π GUI'
+          if (typeof document !== 'undefined') document.title = req.title || 'PiStudio'
           return state
         case 'set_editor_text':
           return { ...state, draft: req.text || '' }
@@ -742,7 +742,7 @@ export function PiProvider({ children }: { children: ReactNode }) {
               .join(' ')
           : ''
         const body = text.replace(/\s+/g, ' ').trim().slice(0, 140) || t('notify.done')
-        new Notification('π GUI', { body, silent: true })
+        new Notification('PiStudio', { body, silent: true })
       } catch {}
     })
     return () => {

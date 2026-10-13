@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Electron shell for pi-gui.
+ * Electron shell for PiStudio.
  *
- * Starts the local pi-gui server on a free port (the server prints a
+ * Starts the local PiStudio server on a free port (the server prints a
  * `__PI_GUI_READY__ {…}` handshake on stdout), then shows it in a window.
  *
  *   npm run desktop                 # cwd = current directory
@@ -115,7 +115,7 @@ function createWindow() {
     y: state.y,
     minWidth: 720,
     minHeight: 480,
-    title: 'π GUI',
+    title: 'PiStudio',
     // Native window chrome: no title bar of our own, and let the sidebar show the
     // system material. The page goes transparent behind it (html.is-electron).
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
@@ -207,7 +207,7 @@ function startServer(cwd) {
             }
           } catch {}
         } else if (line.trim()) {
-          console.log('[pi-gui]', line);
+          console.log('[pistudio]', line);
         }
       }
     });
@@ -231,7 +231,7 @@ function startServer(cwd) {
       }
       server = null;
       if (!restarting && code !== 0 && code !== null) {
-        loadingError(`pi-gui server exited (code=${code} signal=${signal})`);
+        loadingError(`PiStudio server exited (code=${code} signal=${signal})`);
       }
     });
   });
