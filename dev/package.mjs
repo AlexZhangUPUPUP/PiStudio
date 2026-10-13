@@ -10,7 +10,8 @@
  * package.json. The frontend sources, legacy UI, dev tooling and node_modules
  * are excluded (server.js is zero-dependency; main.js only uses Electron).
  *
- * Runs unsigned (no Developer ID here); Gatekeeper will warn on first open:
+ * Ad-hoc signed (no Developer ID here). Ad-hoc signing is required for the app
+ * to launch at all on macOS; Gatekeeper may still warn on first open:
  *   xattr -dr com.apple.quarantine "release/pi-gui-darwin-<arch>/pi GUI.app"
  */
 import { spawnSync } from 'node:child_process'
@@ -72,6 +73,17 @@ async function main() {
   if (!appPath) throw new Error('packager returned no app path')
   console.log('✓ app  :', appPath)
 
+  // Ad-hoc sign the bundle. Without this the app keeps only the linker's
+  // ad-hoc signature (identifier "Electron", Info.plist unbound), which macOS
+  // rejects at launch with:
+  //   bootstrap_look_up dev.pi.gui.MachPortRendezvousServer: Permission denied
+  console.log('• ad-hoc signing…')
+  const sign = spawnSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' })
+  if (sign.status !== 0) throw new Error('codesign failed')
+  const verify = spawnSync('codesign', ['--verify', '--deep', '--strict', appPath], { stdio: 'inherit' })
+  if (verify.status !== 0) throw new Error('codesign --verify failed')
+  console.log('✓ signed (ad-hoc)')
+
   if (process.argv.includes('--app-only') || process.platform !== 'darwin') {
     console.log('\nDone. (skipping .dmg)')
     return
@@ -86,7 +98,7 @@ async function main() {
   )
   if (res.status !== 0) throw new Error('hdiutil failed')
   console.log('✓ dmg  :', dmg)
-  console.log('\nUnsigned build — to open without the Gatekeeper prompt:')
+  console.log('\nAd-hoc signed build — if Gatekeeper still prompts on first open:')
   console.log(`  xattr -dr com.apple.quarantine "${appPath}"`)
 }
 
