@@ -6,6 +6,10 @@
 #   pigui --cwd ~/proj       # run pi in another directory
 #   pigui -- --no-session    # args after -- are forwarded to pi
 #   pigui --rebuild          # force a frontend rebuild first
+#   pigui --help             # show this help
+#
+# When stdout is not a terminal (e.g. started by a tool or script) the GUI is
+# launched detached, so the caller is not blocked until the window is closed.
 #
 # Install it on PATH with `npm run link` (symlinks into ~/.local/bin).
 set -euo pipefail
@@ -21,16 +25,56 @@ while [ -L "$SELF" ]; do
 done
 DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
 
+usage() {
+  cat <<'EOF'
+pi GUI launcher
+
+  pigui                    desktop GUI, pi runs in $PWD
+  pigui --web              browser UI instead of the Electron window
+  pigui --cwd ~/proj       run pi in another directory
+  pigui -- --no-session    args after -- are forwarded to pi
+  pigui --rebuild          force a frontend rebuild first
+  pigui --help             show this help
+
+Env: PI_GUI_CWD overrides the working directory pi is started in.
+EOF
+}
+
+# Run a foreground GUI script, or detach it when there is no terminal so the
+# caller returns immediately instead of waiting for the window to be closed.
+launch() {
+  local script="$1"; shift
+  if [ ! -t 1 ]; then
+    local log="${TMPDIR:-/tmp}/pigui.log"
+    nohup "$script" "$@" >"$log" 2>&1 </dev/null &
+    local pid=$!
+    disown 2>/dev/null || true
+    echo "• detached (pid $pid); logs: $log" >&2
+    return 0
+  fi
+  exec "$script" "$@"
+}
+
 WEB=0
 REBUILD=0
+HELP=0
+DASHDASH=0
 PASS=()
 for arg in "$@"; do
+  if [ "$DASHDASH" = 1 ]; then PASS+=("$arg"); continue; fi
   case "$arg" in
+    --) DASHDASH=1; PASS+=("$arg") ;;
+    -h|--help) HELP=1 ;;
     --web) WEB=1 ;;
     --rebuild) REBUILD=1 ;;
     *) PASS+=("$arg") ;;
   esac
 done
+
+if [ "$HELP" = 1 ]; then
+  usage
+  exit 0
+fi
 
 # The packaged UI lives in dist/; build it if missing or asked.
 if [ "$REBUILD" = 1 ] || [ ! -f "$DIR/dist/index.html" ]; then
@@ -41,10 +85,10 @@ fi
 # Forward args only when there are any (bash 3.2 + set -u friendly).
 if [ "$WEB" = 1 ]; then
   echo "• pi GUI (browser) for ${PI_GUI_CWD:-$PWD}" >&2
-  if [ "${#PASS[@]}" -gt 0 ]; then exec "$DIR/start.sh" "${PASS[@]}"; fi
-  exec "$DIR/start.sh"
+  if [ "${#PASS[@]}" -gt 0 ]; then launch "$DIR/start.sh" "${PASS[@]}"; else launch "$DIR/start.sh"; fi
+  exit 0
 fi
 
 echo "• pi GUI (desktop) for ${PI_GUI_CWD:-$PWD}" >&2
-if [ "${#PASS[@]}" -gt 0 ]; then exec "$DIR/start-desktop.sh" "${PASS[@]}"; fi
-exec "$DIR/start-desktop.sh"
+if [ "${#PASS[@]}" -gt 0 ]; then launch "$DIR/start-desktop.sh" "${PASS[@]}"; else launch "$DIR/start-desktop.sh"; fi
+exit 0
