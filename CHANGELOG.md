@@ -15,6 +15,32 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — open-source hygiene: npm package, CI, install guide
+
+### Added
+- **CI** (`.github/workflows/ci.yml`): `npm run typecheck` + `npm run build` on
+  Node 20 and 22, then the headless-Chrome smoke test (`npm run test:quick`) on
+  Node 22. Electron's binary download is skipped since neither job needs it.
+- **`INSTALL.md`** — install from npm, from source, the macOS app bundle, plus
+  update/uninstall and troubleshooting.
+- **`LICENSE`** (MIT) and `docs/reddit-draft.md` (launch copy, not posted).
+- **npm publishing metadata**: `bin` (installs `pistudio` and the `pigui` alias),
+  a `files` allowlist, `engines`, `repository`/`homepage`/`bugs`, `keywords`,
+  `publishConfig` and a `prepublishOnly` frontend build.
+
+### Changed
+- **the launcher moved `bin/` → `cli/`**, so the repository no longer has a `bin/`
+  directory; it is wired into `package.json`'s `bin` field, which means
+  `npm install -g pistudio` puts the command on `PATH` directly (no more manual
+  `npm run link` required).
+- **repository cleanup** — removed the unrelated `模板/` template (513 MB of
+  untracked `node_modules` plus its tracked sources), `neobrutalist-ui-design/`
+  and its `.zip`, and `demo.html`; they were only ever excluded at packaging time.
+- README (en/zh) updated for `cli/` and the npm install flow; `dev/package.mjs`
+  ignores refreshed.
+
+---
+
 ## 2026-10-13 — renamed to PiStudio + packaging fixes
 
 ### Changed

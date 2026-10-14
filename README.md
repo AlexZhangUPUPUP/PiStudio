@@ -22,7 +22,8 @@ needed for the desktop shell.
 > frontend see **Frontend (React + Vite)** and **Testing → React UI**.
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed when, and the reasoning behind the
-non-obvious decisions.
+non-obvious decisions. See [INSTALL.md](INSTALL.md) for a step-by-step install
+guide — or, once published, just `npm install -g pistudio`.
 
 ## Screenshots
 
@@ -489,14 +490,15 @@ npm install          # downloads Electron (mirror configured in .npmrc)
 ### One command (`pistudio`)
 
 ```bash
-npm run link             # once: symlink ~/.local/bin/pistudio (already on PATH)
-pistudio                 # desktop GUI, pi runs in the current directory
-pistudio --web           # the same in a browser tab
-pistudio --cwd ~/proj    # run pi somewhere else
-pistudio -- --no-session # args after -- go to pi
+npm install -g pistudio   # from npm (adds `pistudio` and the `pigui` alias)
+npm run link              # from a checkout: symlink ~/.local/bin/pistudio
+pistudio                  # desktop GUI, pi runs in the current directory
+pistudio --web            # the same in a browser tab
+pistudio --cwd ~/proj     # run pi somewhere else
+pistudio -- --no-session  # args after -- go to pi
 ```
 
-`bin/pistudio` resolves its own symlink, builds `dist/` if it is missing, then hands
+`cli/pistudio` resolves its own symlink, builds `dist/` if it is missing, then hands
 off to `start-desktop.sh` (Electron, browser fallback) or `start.sh` (`--web`).
 The packaged `.app` can also be double-clicked: it remembers the last working
 folder in `userData/cwd.json` and falls back to your home directory.
@@ -619,16 +621,18 @@ pistudio/
   legacy/                 archived vanilla UI + its old dev scripts (not used at runtime)
   electron/main.js        desktop shell (window, menu, lifecycle)
   extensions/             gui-bridge.ts (/gui-label) · inspector.ts (harness X-ray)
-  neobrutalist-ui-design/ source project the visual language was ported from
+  cli/pistudio            one-command launcher; npm `bin` → pistudio + pigui
   start.sh                browser launcher
   start-desktop.sh        desktop launcher (Electron, browser fallback)
-  bin/pistudio            one-command launcher (`npm run link` → ~/.local/bin/pistudio)
   package.json / .npmrc   Electron dependency + mirror
+  INSTALL.md              install, update and troubleshooting guide
+  LICENSE                 MIT
   CHANGELOG.md            what changed when, plus architecture notes
+  .github/workflows/ci.yml  typecheck + build (node 20/22) and the smoke test
   dev/react-smoke.mjs     React UI end-to-end smoke test (own server + Chrome; `npm test`)
   dev/package.mjs         builds the macOS .app / .dmg (@electron/packager + hdiutil)
   dev/dialogs-demo.ts     extension exercising every dialog/UI method (/dialogtest)
-  dev/shot-*.png          screenshots of the legacy UI (referenced by this README)
+  dev/shot-*.png          screenshots (referenced by this README)
   traces/                 persisted traces (gitignored)
 ```
 

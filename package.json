@@ -1,23 +1,66 @@
 {
   "name": "pistudio",
   "version": "2.0.0",
-  "private": true,
-  "description": "PiStudio — web + desktop GUI for pi (drives `pi --mode rpc`)",
+  "description": "PiStudio — a web + desktop GUI for pi (drives `pi --mode rpc`)",
+  "license": "MIT",
+  "author": "Alex Zhang",
+  "homepage": "https://github.com/AlexZhangUPUPUP/PI-GUI#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexZhangUPUPUP/PI-GUI.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AlexZhangUPUPUP/PI-GUI/issues"
+  },
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "gui",
+    "web-ui",
+    "electron",
+    "desktop",
+    "coding-agent",
+    "llm",
+    "react"
+  ],
   "main": "electron/main.js",
+  "bin": {
+    "pistudio": "cli/pistudio",
+    "pigui": "cli/pistudio"
+  },
+  "files": [
+    "cli/",
+    "dist/",
+    "electron/",
+    "extensions/",
+    "server.js",
+    "start.sh",
+    "start-desktop.sh",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "start": "electron .",
     "desktop": "electron .",
     "web": "node server.js",
-    "gui": "bin/pistudio",
-    "link": "mkdir -p \"$HOME/.local/bin\" && ln -sf \"$PWD/bin/pistudio\" \"$HOME/.local/bin/pistudio\" && ln -sf \"$PWD/bin/pistudio\" \"$HOME/.local/bin/pigui\" && echo 'linked: ~/.local/bin/pistudio (+ pigui alias)'",
-    "unlink": "rm -f \"$HOME/.local/bin/pistudio\" \"$HOME/.local/bin/pigui\" && echo 'removed ~/.local/bin/pistudio'",
+    "gui": "cli/pistudio",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "package": "npm run build && node dev/package.mjs",
+    "package:app": "npm run build && node dev/package.mjs --app-only",
     "test": "node dev/react-smoke.mjs",
     "test:quick": "node dev/react-smoke.mjs --no-chat",
-    "package": "npm run build && node dev/package.mjs",
-    "package:app": "npm run build && node dev/package.mjs --app-only"
+    "link": "mkdir -p \"$HOME/.local/bin\" && ln -sf \"$PWD/cli/pistudio\" \"$HOME/.local/bin/pistudio\" && ln -sf \"$PWD/cli/pistudio\" \"$HOME/.local/bin/pigui\" && echo 'linked: ~/.local/bin/pistudio (+ pigui alias)'",
+    "unlink": "rm -f \"$HOME/.local/bin/pistudio\" \"$HOME/.local/bin/pigui\" && echo 'removed ~/.local/bin/pistudio'"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

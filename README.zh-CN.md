@@ -325,14 +325,15 @@ npm install          # downloads Electron (mirror configured in .npmrc)
 ### 一条命令（`pistudio`）
 
 ```bash
-npm run link             # once: symlink ~/.local/bin/pistudio (already on PATH)
-pistudio                 # desktop GUI, pi runs in the current directory
-pistudio --web           # the same in a browser tab
-pistudio --cwd ~/proj    # run pi somewhere else
-pistudio -- --no-session # args after -- go to pi
+npm install -g pistudio   # 从 npm 安装（同时提供 pistudio 和 pigui 别名）
+npm run link              # 从源码：软链到 ~/.local/bin/pistudio
+pistudio                  # 桌面 GUI，pi 在当前目录运行
+pistudio --web            # 在浏览器标签页中打开
+pistudio --cwd ~/proj     # 在其他目录运行 pi
+pistudio -- --no-session  # `--` 之后的参数传给 pi
 ```
 
-`bin/pistudio` 会解析它自己的符号链接，如果 `dist/` 缺失就构建它，然后交给 `start-desktop.sh`（Electron，浏览器回退）或 `start.sh`（`--web`）。打包好的 `.app` 也可以双击运行：它会在 `userData/cwd.json` 中记住最后的工作文件夹，并回退到你的主目录。
+`cli/pistudio` 会解析它自己的符号链接，如果 `dist/` 缺失就构建它，然后交给 `start-desktop.sh`（Electron，浏览器回退）或 `start.sh`（`--web`）。打包好的 `.app` 也可以双击运行：它会在 `userData/cwd.json` 中记住最后的工作文件夹，并回退到你的主目录。
 
 ## 打包（macOS）
 
@@ -429,16 +430,18 @@ pistudio/
   legacy/                 archived vanilla UI + its old dev scripts (not used at runtime)
   electron/main.js        desktop shell (window, menu, lifecycle)
   extensions/             gui-bridge.ts (/gui-label) · inspector.ts (harness X-ray)
-  neobrutalist-ui-design/ source project the visual language was ported from
+  cli/pistudio            one-command launcher; npm `bin` → pistudio + pigui
   start.sh                browser launcher
   start-desktop.sh        desktop launcher (Electron, browser fallback)
-  bin/pistudio            one-command launcher (`npm run link` → ~/.local/bin/pistudio)
   package.json / .npmrc   Electron dependency + mirror
+  INSTALL.md              install, update and troubleshooting guide
+  LICENSE                 MIT
   CHANGELOG.md            what changed when, plus architecture notes
+  .github/workflows/ci.yml  typecheck + build (node 20/22) and the smoke test
   dev/react-smoke.mjs     React UI end-to-end smoke test (own server + Chrome; `npm test`)
   dev/package.mjs         builds the macOS .app / .dmg (@electron/packager + hdiutil)
   dev/dialogs-demo.ts     extension exercising every dialog/UI method (/dialogtest)
-  dev/shot-*.png          screenshots of the legacy UI (referenced by this README)
+  dev/shot-*.png          screenshots (referenced by this README)
   traces/                 persisted traces (gitignored)
 ```
 
