@@ -15,6 +15,24 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — usage trends, run history, per-agent control
+
+### Added
+- **usage trends**: `/api/usage` now returns `prev` (the previous equal-length
+  window), and the dashboard shows ↑/↓ deltas for cost, tokens and turns.
+- **run history**: `traces/run-*.jsonl` are indexed into the `runs` table and
+  exposed at `GET /api/runs?limit=` (started/ended, model, turns, tokens, cost);
+  the dashboard lists recent runs.
+- **per-agent control** in the task board: `POST /api/tasks/:id/agents/:aid/stop`
+  and `/restart` (respawn with the same spec), plus a **Compare** overlay that
+  line-diffs two agents' answers.
+
+### Changed
+- task agents keep their originating spec so they can be restarted; a replaced
+  process can no longer clobber the new agent's state on exit.
+
+---
+
 ## 2026-10-14 — SQLite index + usage dashboard
 
 ### Added

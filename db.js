@@ -46,7 +46,10 @@ const SCHEMA = [
     ended_at INTEGER,
     cost REAL,
     tokens INTEGER,
-    status TEXT
+    turns INTEGER,
+    status TEXT,
+    mtime INTEGER,
+    size INTEGER
   )`,
   `CREATE TABLE IF NOT EXISTS tasks(
     id TEXT PRIMARY KEY,
@@ -117,6 +120,7 @@ function emptyUsage(days) {
     available: false,
     days: Number(days) || 30,
     totals: zeroTotals(),
+    prev: zeroTotals(),
     series: [],
     byModel: [],
     byWorkspace: [],
@@ -138,6 +142,9 @@ function noopAdapter(reason) {
     meta: () => new Map(),
     upsertSessions: () => 0,
     upsertTasks: () => 0,
+    runMeta: () => new Map(),
+    upsertRuns: () => 0,
+    runs: () => [],
     rebuild: () => {},
     close: () => {},
   };
@@ -172,7 +179,20 @@ function openIndex({ dbFile, log, cwd } = {}) {
     db = new sqlite.DatabaseSync(dbFile);
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA synchronous = NORMAL');
+    db.exec('PRAGMA busy_timeout = 5000');
     db.exec(SCHEMA);
+    // Older index DBs may already have a runs table without the columns added
+    // for trace-run indexing. Each ALTER is guarded so fresh databases (whose
+    // CREATE TABLE already includes them) simply report "duplicate column".
+    for (const add of [
+      'ALTER TABLE runs ADD COLUMN turns INTEGER',
+      'ALTER TABLE runs ADD COLUMN mtime INTEGER',
+      'ALTER TABLE runs ADD COLUMN size INTEGER',
+    ]) {
+      try {
+        db.exec(add);
+      } catch {}
+    }
   } catch (err) {
     const msg = (err && err.message) || String(err);
     logFn(`[pistudio] index: cannot open ${dbFile}: ${msg}`);
@@ -224,6 +244,19 @@ function openIndex({ dbFile, log, cwd } = {}) {
       countTasks: db.prepare('SELECT COUNT(*) AS n FROM tasks'),
       maxUpdated: db.prepare('SELECT MAX(updated_at) AS n FROM sessions'),
       allMeta: db.prepare('SELECT session_file, mtime, size FROM sessions'),
+      runMeta: db.prepare('SELECT run_file, mtime, size FROM runs'),
+      listRuns: db.prepare(
+        'SELECT run_file, model, started_at, ended_at, cost, tokens, turns, status FROM runs ORDER BY COALESCE(started_at, mtime) DESC LIMIT ?',
+      ),
+      upsertRun: db.prepare(
+        `INSERT INTO runs(run_file, session, cwd, model, started_at, ended_at, cost, tokens, turns, status, mtime, size)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(run_file) DO UPDATE SET
+           session=excluded.session, cwd=excluded.cwd, model=excluded.model,
+           started_at=excluded.started_at, ended_at=excluded.ended_at,
+           cost=excluded.cost, tokens=excluded.tokens, turns=excluded.turns,
+           status=excluded.status, mtime=excluded.mtime, size=excluded.size`,
+      ),
       kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
       kvSet: db.prepare(
         'INSERT INTO kv(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
@@ -302,8 +335,11 @@ function openIndex({ dbFile, log, cwd } = {}) {
       const d = Math.max(1, Number(days) || 30);
       const out = emptyUsage(d);
       try {
-        const since = Date.now() - d * 86400000;
+        const now = Date.now();
+        const since = now - d * 86400000;
+        const prevSince = now - 2 * d * 86400000;
         const totals = zeroTotals();
+        const prev = zeroTotals();
         const seriesMap = new Map();
         const modelMap = new Map();
         const wsMap = new Map();
@@ -371,9 +407,37 @@ function openIndex({ dbFile, log, cwd } = {}) {
         }
         totals.tasks = taskIds.size;
 
+        // Preceding equal-length window [now - 2*days, now - days). Same keys
+        // as `totals` so the UI can render a delta without special-casing.
+        for (const s of stmts.usageSessions.all(prevSince)) {
+          const updated = Number(s.updated_at) || 0;
+          if (updated >= since) continue;
+          const tin = Number(s.tokens_in) || 0;
+          const tout = Number(s.tokens_out) || 0;
+          prev.cost += Number(s.cost) || 0;
+          prev.tokensIn += tin;
+          prev.tokensOut += tout;
+          prev.tokens += tin + tout;
+          prev.turns += Number(s.turns) || 0;
+          prev.sessions += 1;
+        }
+        const prevTaskIds = new Set();
+        for (const t of stmts.usageTasks.all()) {
+          const created = Number(t.created_at) || 0;
+          const ended = Number(t.ended_at) || 0;
+          const at = ended || created;
+          if (!at || at < prevSince || at >= since) continue;
+          prevTaskIds.add(String(t.task_id));
+          prev.cost += Number(t.cost) || 0;
+          prev.tokens += Number(t.tokens) || 0;
+          prev.turns += Number(t.turns) || 0;
+        }
+        prev.tasks = prevTaskIds.size;
+
         out.available = true;
         out.days = d;
         out.totals = totals;
+        out.prev = prev;
         out.series = [...seriesMap.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
         out.byModel = [...modelMap.values()].sort((a, b) => b.cost - a.cost);
         out.byWorkspace = [...wsMap.values()].sort((a, b) => b.cost - a.cost);
@@ -417,6 +481,37 @@ function openIndex({ dbFile, log, cwd } = {}) {
       return out;
     },
 
+    /** Stored {mtime,size} per trace run — lets the scanner skip unchanged runs. */
+    runMeta() {
+      const out = new Map();
+      try {
+        for (const r of stmts.runMeta.all()) {
+          out.set(String(r.run_file), { mtime: Number(r.mtime) || 0, size: Number(r.size) || 0 });
+        }
+      } catch {}
+      return out;
+    },
+
+    /** Newest indexed trace runs (FROZEN /api/runs contract). */
+    runs(limit) {
+      const lim = Math.max(1, Math.min(200, Number(limit) || 20));
+      try {
+        return stmts.listRuns.all(lim).map((r) => ({
+          runFile: path.basename(String(r.run_file || '')),
+          startedAt: Number(r.started_at) || null,
+          endedAt: Number(r.ended_at) || null,
+          cost: Number(r.cost) || 0,
+          tokens: Number(r.tokens) || 0,
+          turns: Number(r.turns) || 0,
+          status: r.status != null ? String(r.status) : null,
+          model: r.model != null ? String(r.model) : null,
+        }));
+      } catch (err) {
+        logFn(`[pistudio] index: runs error: ${(err && err.message) || err}`);
+        return [];
+      }
+    },
+
     /** Upsert session rows and refresh their FTS entries. */
     upsertSessions(rows) {
       if (!Array.isArray(rows) || !rows.length) return 0;
@@ -455,6 +550,42 @@ function openIndex({ dbFile, log, cwd } = {}) {
           db.exec('ROLLBACK');
         } catch {}
         logFn(`[pistudio] index: upsertSessions error: ${(err && err.message) || err}`);
+      }
+      return n;
+    },
+
+    /** Upsert trace-run rows derived from run-*.jsonl files. */
+    upsertRuns(rows) {
+      if (!Array.isArray(rows) || !rows.length) return 0;
+      let n = 0;
+      try {
+        db.exec('BEGIN');
+        for (const r of rows) {
+          const runFile = String(r.run_file || r.path || '');
+          if (!runFile) continue;
+          stmts.upsertRun.run(
+            runFile,
+            r.session != null ? String(r.session) : null,
+            r.cwd != null ? String(r.cwd) : null,
+            r.model != null ? String(r.model) : null,
+            r.started_at != null ? Number(r.started_at) : null,
+            r.ended_at != null ? Number(r.ended_at) : null,
+            Number(r.cost) || 0,
+            Number(r.tokens) || 0,
+            Number(r.turns) || 0,
+            r.status != null ? String(r.status) : null,
+            Number(r.mtime) || 0,
+            Number(r.size) || 0,
+          );
+          n += 1;
+        }
+        if (n) stmts.kvSet.run('indexed_at', String(Date.now()));
+        db.exec('COMMIT');
+      } catch (err) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        logFn(`[pistudio] index: upsertRuns error: ${(err && err.message) || err}`);
       }
       return n;
     },

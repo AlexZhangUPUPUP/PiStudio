@@ -200,6 +200,9 @@ finished agent is badged.
 
 ![agent tasks — race two models, with a per-agent leaderboard](dev/shot-tasks.png?v=2)
 
+Each agent gets **Stop** / **Retry** (respawn with the same spec) controls, and
+you can tick two agents to **Compare** their answers with a line diff.
+
 > Tasks are spawned by PiStudio itself. That is different from the
 > **Inspector → Agents** view, which merely observes pi's own `subagent`
 > example extension — see **Sub-agents**.
@@ -216,14 +219,16 @@ The index powers:
 - **fast global search** (`/api/search`) across every session and workspace,
   including message bodies — no more grepping files on each keystroke
 - the **Usage & spend** dashboard (toolbar **Usage**, or ⌘K → *Usage & spend*):
-  cost, tokens and turns per day, per model and per workspace
+  cost, tokens and turns per day, per model and per workspace, with ↑/↓ deltas
+  against the previous period and a list of recent runs (`GET /api/runs`)
 
 ![usage dashboard — cost per day, by model and by workspace](dev/shot-usage.png?v=2)
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/index/status` | `{ available, db, sessions, runs, tasks }` |
-| GET | `/api/usage?days=30` | totals + daily series + by-model + by-workspace |
+| GET | `/api/usage?days=30` | totals (+ `prev`) + daily series + by-model + by-workspace |
+| GET | `/api/runs?limit=20` | indexed `traces/run-*.jsonl` history |
 | POST | `/api/index/rebuild` | drop and rescan the index |
 
 Disable it with `--no-index` (or `PI_GUI_NO_INDEX=1`); everything then falls back

@@ -44,6 +44,11 @@ window.PI_I18N = {
     'tasks.time': 'Time',
     'tasks.followUp': 'Follow-up…',
     'tasks.failed': 'failed to start',
+    'tasks.retry': 'Retry',
+    'tasks.compare': 'Compare',
+    'tasks.compareTitle': 'Compare answers',
+    'tasks.compareHint': 'Tick two agents to diff their answers',
+    'tasks.selectOnly2': 'Select exactly two agents',
 
     // usage / spend
     'usage.title': 'Usage & spend',
@@ -65,6 +70,8 @@ window.PI_I18N = {
     'usage.indexOff': 'Index disabled',
     'usage.empty': 'No usage data yet',
     'usage.db': 'Database',
+    'usage.vsPrev': 'vs previous period',
+    'usage.recentRuns': 'Recent runs',
     'common.new': '＋ New',
     'common.stop': '■ Stop',
     'common.send': 'Send',
@@ -582,6 +589,11 @@ window.PI_I18N = {
     'tasks.time': '耗时',
     'tasks.followUp': '继续追问…',
     'tasks.failed': '启动失败',
+    'tasks.retry': '重试',
+    'tasks.compare': '对比',
+    'tasks.compareTitle': '对比回答',
+    'tasks.compareHint': '勾选两个 agent 来 diff 它们的回答',
+    'tasks.selectOnly2': '请正好选择两个 agent',
 
     // usage / spend
     'usage.title': '用量与花费',
@@ -603,6 +615,8 @@ window.PI_I18N = {
     'usage.indexOff': '索引已禁用',
     'usage.empty': '暂无用量数据',
     'usage.db': '数据库',
+    'usage.vsPrev': '对比上一周期',
+    'usage.recentRuns': '最近的运行',
     'common.new': '＋ 新建',
     'common.stop': '■ 停止',
     'common.send': '发送',

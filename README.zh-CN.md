@@ -173,6 +173,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 
 ![agent 任务 —— 两个模型对拍，带每-agent 排行榜](dev/shot-tasks.png?v=2)
 
+每个 agent 都有 **停止** / **重试**（用同一份 spec 重启）按钮；勾选两个 agent 可以用**对比**查看回答的行级 diff。
+
 > task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
 
 ## 用量与花费
@@ -182,14 +184,15 @@ PiStudio 用 **Node 自带的 `node:sqlite`** 建了一个**零依赖 SQLite 索
 索引支撑：
 
 - **全局快速搜索**（`/api/search`）—— 覆盖所有工作区的会话，连消息正文都能搜，不用每次按键都去 grep 文件
-- **用量与花费**面板（工具栏 **Usage**，或 ⌘K → *用量与花费*）：按天、按模型、按工作区的成本 / Token / 轮次
+- **用量与花费**面板（工具栏 **Usage**，或 ⌘K → *用量与花费*）：按天、按模型、按工作区的成本 / Token / 轮次，带对比上一周期的 ↑/↓ 变化，并列出最近的运行（`GET /api/runs`）
 
 ![用量面板 —— 每天成本，按模型、按工作区](dev/shot-usage.png?v=2)
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET | `/api/index/status` | `{ available, db, sessions, runs, tasks }` |
-| GET | `/api/usage?days=30` | 总量 + 每日序列 + 按模型 + 按工作区 |
+| GET | `/api/usage?days=30` | 总量（含 `prev`）+ 每日序列 + 按模型 + 按工作区 |
+| GET | `/api/runs?limit=20` | 已索引的 `traces/run-*.jsonl` 历史 |
 | POST | `/api/index/rebuild` | 清空并重新扫描索引 |
 
 用 `--no-index`（或 `PI_GUI_NO_INDEX=1`）关闭，所有功能退回直接读 JSONL 文件。数据库在 `~/.pistudio/index.db`。

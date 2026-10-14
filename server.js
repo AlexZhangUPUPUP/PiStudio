@@ -22,6 +22,7 @@
  *   GET  /api/sessions         -> saved pi sessions for the cwd
  *   POST /api/session/delete   -> delete a saved session file
  *   GET  /api/search?q=        -> full-text search across saved sessions
+ *   GET  /api/runs?limit=      -> indexed trace runs, newest first
  *   GET  /api/changes?c=       -> working-tree changes (git) + per-file diff
  *   POST /api/changes/revert   -> back up and revert one file
  *   GET  /tasks                -> tiny debug page for agent tasks
@@ -30,6 +31,8 @@
  *   GET  /api/tasks/:id        -> task detail (agents + buffered events)
  *   GET  /api/tasks/:id/events -> SSE stream of every agent's events
  *   POST /api/tasks/:id/agents/:aid/command -> RPC command to one agent
+ *   POST /api/tasks/:id/agents/:aid/stop    -> stop one agent in the task
+ *   POST /api/tasks/:id/agents/:aid/restart -> restart one agent in the task
  *   POST /api/tasks/:id/stop   -> stop every agent in the task
  *   DELETE /api/tasks/:id      -> stop and forget the task
  *
@@ -1455,6 +1458,7 @@ function startTaskAgent(task, agent, spec) {
   emitTask(task, agent, { type: '__proc', status: 'started', pid: child.pid, cwd: task.cwd, model: agent.model });
 
   attachJsonlReader(child.stdout, (line) => {
+    if (agent.child !== child) return; // stale reader from a replaced process
     let evt;
     try {
       evt = JSON.parse(line);
@@ -1484,11 +1488,13 @@ function startTaskAgent(task, agent, spec) {
   });
 
   attachJsonlReader(child.stderr, (text) => {
+    if (agent.child !== child) return; // stale reader from a replaced process
     emitTask(task, agent, { type: '__stderr', text });
     process.stderr.write(`[task ${task.id}/${agent.id}] ${text}\n`);
   });
 
   child.on('error', (err) => {
+    if (agent.child !== child) return; // stale error from a replaced process
     agent.alive = false;
     agent.status = 'error';
     emitTask(task, agent, { type: '__proc', status: 'error', message: String((err && err.message) || err) });
@@ -1496,12 +1502,13 @@ function startTaskAgent(task, agent, spec) {
   });
 
   child.on('exit', (code, signal) => {
+    if (agent.child !== child) return; // stale exit from a replaced process
     agent.alive = false;
     agent.child = null;
     agent.exitCode = code;
     agent.endedAt = Date.now();
-    agent.status = task.stopping ? 'stopped' : code === 0 ? 'done' : 'failed';
-    emitTask(task, agent, { type: '__proc', status: 'exit', code, signal, stopped: !!task.stopping });
+    agent.status = task.stopping || agent.stopping ? 'stopped' : code === 0 ? 'done' : 'failed';
+    emitTask(task, agent, { type: '__proc', status: 'exit', code, signal, stopped: !!(task.stopping || agent.stopping) });
     refreshTaskStatus(task);
   });
 
@@ -1566,6 +1573,7 @@ function createTask(opts) {
       model: spec.model ? String(spec.model) : null,
       role: spec.role ? String(spec.role) : null,
       prompt: spec.prompt ? String(spec.prompt) : null,
+      spec,
       child: null,
       alive: false,
       status: 'starting',
@@ -1619,6 +1627,73 @@ function stopTask(task, callback) {
       }
     }, 2000).unref?.();
   }
+}
+
+function stopTaskAgent(task, agent, callback) {
+  const c = agent.child;
+  agent.stopping = true;
+  if (!c) {
+    agent.alive = false;
+    agent.child = null;
+    agent.status = 'stopped';
+    if (agent.endedAt == null) agent.endedAt = Date.now();
+    refreshTaskStatus(task);
+    if (callback) callback();
+    return;
+  }
+  let finished = false;
+  const done = () => {
+    if (finished) return;
+    finished = true;
+    refreshTaskStatus(task);
+    if (callback) callback();
+  };
+  c.once('exit', done);
+  try {
+    c.kill('SIGTERM');
+  } catch {
+    done();
+  }
+  setTimeout(() => {
+    if (agent.child === c) {
+      try {
+        c.kill('SIGKILL');
+      } catch {}
+    }
+  }, 2000).unref?.();
+}
+
+function restartTaskAgent(task, agent) {
+  const prev = agent.child;
+  // Detach the old process before touching state, so its exit/error handlers
+  // (which now check `agent.child === child`) cannot clobber the replacement.
+  agent.stopping = false;
+  agent.child = null;
+  agent.alive = false;
+  agent.pid = null;
+  if (prev) {
+    try {
+      prev.kill('SIGTERM');
+    } catch {}
+    setTimeout(() => {
+      try {
+        prev.kill('SIGKILL');
+      } catch {}
+    }, 2000).unref?.();
+  }
+  // Reset every streamed field before respawning with the original spec.
+  agent.text = '';
+  agent.thinking = '';
+  agent.usage = null;
+  agent.tools = {};
+  agent.turns = 0;
+  agent.events = [];
+  agent.status = 'starting';
+  agent.exitCode = null;
+  agent.endedAt = null;
+  agent.startedAt = Date.now();
+  startTaskAgent(task, agent, agent.spec);
+  refreshTaskStatus(task);
 }
 
 function taskAgentInfo(a) {
@@ -2056,6 +2131,11 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, index.usage({ days }));
   }
 
+  if (p === '/api/runs') {
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 20)));
+    return sendJson(res, 200, { runs: index.available ? index.runs(limit) : [] });
+  }
+
   if (p === '/api/changes') {
     const sess = peekSession(cid);
     try {
@@ -2224,6 +2304,16 @@ const server = http.createServer((req, res) => {
       });
     }
 
+    if (parts.length === 6 && parts[3] === 'agents' && (parts[5] === 'stop' || parts[5] === 'restart') && req.method === 'POST') {
+      const agent = task.agents.get(parts[4]);
+      if (!agent) return sendJson(res, 404, { error: 'unknown agent' });
+      if (parts[5] === 'stop') {
+        return stopTaskAgent(task, agent, () => sendJson(res, 200, { ok: true, task: taskInfo(task) }));
+      }
+      restartTaskAgent(task, agent);
+      return sendJson(res, 200, { ok: true, task: taskInfo(task) });
+    }
+
     return sendJson(res, 404, { error: 'not found' });
   }
 
@@ -2260,6 +2350,122 @@ reaper.unref?.();
 
 let indexScanning = false;
 
+/**
+ * Parse one run-*.jsonl trace line by line without loading the whole file into
+ * memory. Each record is `{ seq, t, evt }`; we only need the first/last `t`,
+ * assistant `message_end` usage, the dominant model, and the `__proc` exit.
+ */
+function scanRunFile(file) {
+  const MAX_LINE = 8 * 1024 * 1024;
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+  } catch {
+    return null;
+  }
+  const state = {
+    startedAt: null,
+    endedAt: null,
+    cost: 0,
+    tokens: 0,
+    turns: 0,
+    model: null,
+    status: null,
+    session: null,
+    cwd: null,
+    modelCount: new Map(),
+  };
+  const decoder = new StringDecoder('utf8');
+  const CHUNK = 256 * 1024;
+  const buf = Buffer.alloc(CHUNK);
+  let carry = '';
+
+  const handleLine = (line) => {
+    if (!line) return;
+    let o;
+    try {
+      o = JSON.parse(line);
+    } catch {
+      return;
+    }
+    const t = Number(o.t);
+    if (t) {
+      if (state.startedAt == null) state.startedAt = t;
+      state.endedAt = t;
+    }
+    const evt = o.evt;
+    if (!evt || typeof evt !== 'object') return;
+    if (evt.type === '__proc') {
+      if (evt.status === 'exit') state.status = evt.code === 0 ? 'done' : 'failed';
+      if (!state.cwd && evt.cwd) state.cwd = String(evt.cwd);
+      return;
+    }
+    if (evt.type === 'message_end') {
+      const m = evt.message;
+      if (m && m.role === 'assistant') {
+        state.turns += 1;
+        const u = m.usage;
+        if (u) {
+          state.tokens += (Number(u.input) || 0) + (Number(u.output) || 0) + (Number(u.cacheRead) || 0) + (Number(u.cacheWrite) || 0);
+          const c = u.cost || {};
+          let cc = (Number(c.input) || 0) + (Number(c.output) || 0) + (Number(c.cacheRead) || 0) + (Number(c.cacheWrite) || 0);
+          if (!cc && Number(c.total)) cc = Number(c.total);
+          state.cost += cc;
+        }
+        const model = m.model || m.responseModel;
+        if (model) {
+          const key = String(model);
+          state.modelCount.set(key, (state.modelCount.get(key) || 0) + 1);
+        }
+      }
+      return;
+    }
+    if (state.session == null && evt.data && evt.data.sessionId) state.session = String(evt.data.sessionId);
+  };
+
+  try {
+    for (;;) {
+      const n = fs.readSync(fd, buf, 0, CHUNK, null);
+      if (n <= 0) break;
+      carry += decoder.write(buf.subarray(0, n));
+      let nl;
+      while ((nl = carry.indexOf('\n')) !== -1) {
+        let line = carry.slice(0, nl);
+        carry = carry.slice(nl + 1);
+        if (line.endsWith('\r')) line = line.slice(0, -1);
+        handleLine(line);
+      }
+      if (carry.length > MAX_LINE) carry = ''; // pathological single line
+    }
+    carry += decoder.end();
+    if (carry) handleLine(carry.endsWith('\r') ? carry.slice(0, -1) : carry);
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {}
+  }
+
+  let model = null;
+  let best = -1;
+  for (const [m, n] of state.modelCount) {
+    if (n > best) {
+      best = n;
+      model = m;
+    }
+  }
+  return {
+    startedAt: state.startedAt,
+    endedAt: state.endedAt,
+    cost: state.cost,
+    tokens: state.tokens,
+    turns: state.turns,
+    model,
+    status: state.status,
+    session: state.session,
+    cwd: state.cwd,
+  };
+}
+
 function scanIndex() {
   if (!index.available || indexScanning) return;
   indexScanning = true;
@@ -2295,6 +2501,45 @@ function scanIndex() {
       });
     }
     if (rows.length) index.upsertSessions(rows);
+
+    // Trace runs: index run-*.jsonl files, skipping unchanged mtime/size pairs.
+    const runKnown = index.runMeta();
+    const runRows = [];
+    let names = [];
+    try {
+      names = fs.readdirSync(TRACE_DIR);
+    } catch {}
+    for (const f of names) {
+      if (!f.startsWith('run-') || !f.endsWith('.jsonl')) continue;
+      const full = path.join(TRACE_DIR, f);
+      let st;
+      try {
+        st = fs.statSync(full);
+      } catch {
+        continue;
+      }
+      const mtime = Math.round(st.mtimeMs) || 0;
+      const size = st.size || 0;
+      const prev = runKnown.get(full);
+      if (prev && prev.mtime === mtime && prev.size === size) continue;
+      const r = scanRunFile(full);
+      if (!r) continue;
+      runRows.push({
+        run_file: full,
+        session: r.session,
+        cwd: r.cwd || CWD,
+        model: r.model,
+        started_at: r.startedAt,
+        ended_at: r.endedAt,
+        cost: r.cost,
+        tokens: r.tokens,
+        turns: r.turns,
+        status: r.status,
+        mtime,
+        size,
+      });
+    }
+    if (runRows.length) index.upsertRuns(runRows);
   } catch (err) {
     process.stderr.write(`[pistudio] index scan error: ${(err && err.message) || err}\n`);
   } finally {

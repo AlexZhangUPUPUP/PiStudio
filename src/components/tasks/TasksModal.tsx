@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Crown, Plus, Play, Send, Square, Trash2, X } from 'lucide-react'
+import { Crown, Plus, Play, RotateCcw, Send, Square, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,7 +13,9 @@ import {
   fmtTokens,
   getTask,
   listTasks,
+  restartAgent,
   sendAgentCommand,
+  stopAgent,
   stopTask,
   usageCost,
   usageTokens,
@@ -55,6 +57,69 @@ function StatusPill({ status }: { status: string }) {
   )
 }
 
+interface DiffLine {
+  type: 'add' | 'del' | 'same'
+  text: string
+}
+
+/** Classic LCS line diff (no deps), with common prefix/suffix trimming. */
+function lcsDiff(a: string[], b: string[]): DiffLine[] {
+  const n = a.length
+  const m = b.length
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  const out: DiffLine[] = []
+  let i = 0
+  let j = 0
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      out.push({ type: 'same', text: a[i] })
+      i++
+      j++
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      out.push({ type: 'del', text: a[i] })
+      i++
+    } else {
+      out.push({ type: 'add', text: b[j] })
+      j++
+    }
+  }
+  while (i < n) out.push({ type: 'del', text: a[i++] })
+  while (j < m) out.push({ type: 'add', text: b[j++] })
+  return out
+}
+
+function diffLines(a: string[], b: string[]): DiffLine[] {
+  let start = 0
+  while (start < a.length && start < b.length && a[start] === b[start]) start++
+  let endA = a.length
+  let endB = b.length
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--
+    endB--
+  }
+
+  const out: DiffLine[] = []
+  for (let i = 0; i < start; i++) out.push({ type: 'same', text: a[i] })
+
+  const midA = a.slice(start, endA)
+  const midB = b.slice(start, endB)
+  if (midA.length * midB.length > 2_000_000) {
+    // Fall back to a naive removed-then-added diff for very large inputs.
+    for (const l of midA) out.push({ type: 'del', text: l })
+    for (const l of midB) out.push({ type: 'add', text: l })
+  } else {
+    out.push(...lcsDiff(midA, midB))
+  }
+
+  for (let i = endA; i < a.length; i++) out.push({ type: 'same', text: a[i] })
+  return out
+}
+
 /**
  * Agent tasks — Mission Control / model race.
  *
@@ -73,6 +138,8 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const [error, setError] = useState('')
   const [task, setTask] = useState<TaskInfo | null>(null)
   const [recent, setRecent] = useState<TaskInfo[]>([])
+  const [selected, setSelected] = useState<string[]>([])
+  const [compareAgents, setCompareAgents] = useState<[TaskAgent, TaskAgent] | null>(null)
   const nextKey = useRef(3)
 
   const refreshRecent = useCallback(async () => {
@@ -103,11 +170,19 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      if (compareAgents) setCompareAgents(null)
+      else onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open, onClose, compareAgents])
+
+  // Reset compare selection/overlay whenever the viewed task changes.
+  useEffect(() => {
+    setSelected([])
+    setCompareAgents(null)
+  }, [task?.id])
 
   const addRow = () => {
     const k = nextKey.current++
@@ -145,6 +220,31 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     if (next) setTask(next)
   }
 
+  const toggleSelect = (id: string) => {
+    setSelected((sel) => (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]))
+  }
+
+  const stopAgentNow = async (aid: string) => {
+    if (!task) return
+    await stopAgent(task.id, aid)
+    const next = await getTask(task.id)
+    if (next) setTask(next)
+  }
+
+  const restartAgentNow = async (aid: string) => {
+    if (!task) return
+    await restartAgent(task.id, aid)
+    const next = await getTask(task.id)
+    if (next) setTask(next)
+  }
+
+  const openCompare = () => {
+    if (!task || selected.length !== 2) return
+    const a = task.agents.find((x) => x.id === selected[0])
+    const b = task.agents.find((x) => x.id === selected[1])
+    if (a && b) setCompareAgents([a, b])
+  }
+
   if (!open) return null
 
   const agents = task?.agents || []
@@ -154,7 +254,9 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const totalCost = agents.reduce((s, a) => s + usageCost(a.usage), 0)
   const totalTokens = agents.reduce((s, a) => s + usageTokens(a.usage), 0)
 
-  return createPortal(
+  return (
+    <>
+      {createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onMouseDown={(e) => {
@@ -263,16 +365,30 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                 <span className="truncate font-mono text-[11px] text-muted-foreground" title={task.cwd}>
                   {task.cwd}
                 </span>
-                {task.agents.some((a) => a.alive) && (
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    {selected.length > 2 ? t('tasks.selectOnly2') : selected.length < 2 ? t('tasks.compareHint') : ''}
+                  </span>
+                  {task.agents.some((a) => a.alive) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1"
+                      onClick={() => stopTask(task.id)}
+                    >
+                      <Square className="size-3" /> {t('tasks.stop')}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="ml-auto h-7 gap-1"
-                    onClick={() => stopTask(task.id)}
+                    className="h-7 gap-1"
+                    disabled={selected.length !== 2}
+                    onClick={openCompare}
                   >
-                    <Square className="size-3" /> {t('tasks.stop')}
+                    {t('tasks.compare')}
                   </Button>
-                )}
+                </div>
               </div>
 
               {/* leaderboard */}
@@ -335,6 +451,11 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                     agent={a}
                     followUp={(msg) => sendAgentCommand(task.id, a.id, msg)}
                     t={t}
+                    selected={selected.includes(a.id)}
+                    selectDisabled={!selected.includes(a.id) && selected.length >= 2}
+                    onToggleSelect={() => toggleSelect(a.id)}
+                    onStop={() => stopAgentNow(a.id)}
+                    onRetry={() => restartAgentNow(a.id)}
                   />
                 ))}
               </div>
@@ -344,6 +465,16 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
       </div>
     </div>,
     document.body,
+      )}
+      {compareAgents && (
+        <CompareOverlay
+          a={compareAgents[0]}
+          b={compareAgents[1]}
+          t={t}
+          onClose={() => setCompareAgents(null)}
+        />
+      )}
+    </>
   )
 }
 
@@ -351,12 +482,23 @@ function AgentColumn({
   agent,
   followUp,
   t,
+  selected,
+  selectDisabled,
+  onToggleSelect,
+  onStop,
+  onRetry,
 }: {
   agent: TaskAgent
   followUp: (msg: string) => Promise<boolean>
   t: (k: string, vars?: Record<string, unknown>) => string
+  selected: boolean
+  selectDisabled: boolean
+  onToggleSelect: () => void
+  onStop: () => Promise<void>
+  onRetry: () => Promise<void>
 }) {
   const [draft, setDraft] = useState('')
+  const [pending, setPending] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
 
@@ -365,14 +507,56 @@ function AgentColumn({
     if (el && atBottom.current) el.scrollTop = el.scrollHeight
   }, [agent.text, agent.thinking])
 
+  const run = async (fn: () => Promise<void>) => {
+    setPending(true)
+    try {
+      await fn()
+    } finally {
+      setPending(false)
+    }
+  }
+
   const toolChips = Object.entries(agent.tools || {})
 
   return (
     <div className="flex max-h-[52vh] w-[360px] shrink-0 flex-col rounded-md border border-border bg-card">
       <div className="border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            disabled={selectDisabled}
+            aria-label={t('tasks.compare')}
+            className="size-3.5 shrink-0 cursor-pointer accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          />
           <span className="truncate text-[12px] font-semibold">{agent.name}</span>
           <StatusPill status={agent.status} />
+          <div className="ml-auto flex items-center gap-0.5">
+            {agent.alive ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                title={t('tasks.stop')}
+                disabled={pending}
+                onClick={() => run(onStop)}
+              >
+                <Square className="size-3" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                title={t('tasks.retry')}
+                disabled={pending}
+                onClick={() => run(onRetry)}
+              >
+                <RotateCcw className="size-3" />
+              </Button>
+            )}
+          </div>
         </div>
         <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
           {[agent.model || t('tasks.defaultModel'), agent.pid ? 'pid ' + agent.pid : '', fmtElapsed(agent)]
@@ -432,5 +616,74 @@ function AgentColumn({
         </Button>
       </form>
     </div>
+  )
+}
+
+function CompareOverlay({
+  a,
+  b,
+  t,
+  onClose,
+}: {
+  a: TaskAgent
+  b: TaskAgent
+  t: (k: string, vars?: Record<string, unknown>) => string
+  onClose: () => void
+}) {
+  const diff = useMemo(() => diffLines(a.text.split('\n'), b.text.split('\n')), [a.text, b.text])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('tasks.compareTitle')}
+        className="flex max-h-[88vh] w-[min(1100px,96vw)] animate-fade-in flex-col overflow-hidden rounded-lg border border-border bg-popover text-foreground shadow-xl"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold">{t('tasks.compareTitle')}</h2>
+          <Button variant="ghost" size="icon" className="size-7" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div className="grid grid-cols-2">
+            <div className="sticky top-0 border-b border-border bg-popover px-3 py-2 text-[12px] font-semibold">
+              {a.name}
+            </div>
+            <div className="sticky top-0 border-b border-border bg-popover px-3 py-2 text-[12px] font-semibold">
+              {b.name}
+            </div>
+            {diff.map((d, i) => (
+              <Fragment key={i}>
+                <div
+                  className={cn(
+                    'min-h-[1.2em] whitespace-pre-wrap break-words border-b border-border/30 px-3 py-0.5 font-mono text-[11px] leading-relaxed',
+                    d.type === 'del' ? 'bg-destructive/10 text-destructive' : d.type === 'same' ? 'text-muted-foreground' : '',
+                  )}
+                >
+                  {d.type === 'add' ? '' : d.text}
+                </div>
+                <div
+                  className={cn(
+                    'min-h-[1.2em] whitespace-pre-wrap break-words border-b border-border/30 border-l px-3 py-0.5 font-mono text-[11px] leading-relaxed',
+                    d.type === 'add' ? 'bg-teal/10 text-teal' : d.type === 'same' ? 'text-muted-foreground' : '',
+                  )}
+                >
+                  {d.type === 'del' ? '' : d.text}
+                </div>
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }

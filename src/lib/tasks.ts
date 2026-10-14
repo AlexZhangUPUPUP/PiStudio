@@ -128,6 +128,34 @@ export async function sendAgentCommand(
   }
 }
 
+async function agentAction(
+  taskId: string,
+  agentId: string,
+  action: 'stop' | 'restart',
+): Promise<TaskInfo | null> {
+  try {
+    const r = await fetch(
+      apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/${action}`),
+      { method: 'POST' },
+    )
+    if (!r.ok) return null
+    const d = await r.json()
+    return (d?.task as TaskInfo) || null
+  } catch {
+    return null
+  }
+}
+
+/** Stop one agent of a task. Resolves to the refreshed task, or null on error. */
+export async function stopAgent(taskId: string, agentId: string): Promise<TaskInfo | null> {
+  return agentAction(taskId, agentId, 'stop')
+}
+
+/** Respawn one agent with its original spec/prompt (stream reset). */
+export async function restartAgent(taskId: string, agentId: string): Promise<TaskInfo | null> {
+  return agentAction(taskId, agentId, 'restart')
+}
+
 export async function stopTask(id: string): Promise<void> {
   try {
     await fetch(apiUrl(`/api/tasks/${encodeURIComponent(id)}/stop`), { method: 'POST' })
