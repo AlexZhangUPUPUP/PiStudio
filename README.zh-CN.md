@@ -167,7 +167,11 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | POST | `/api/tasks/:id/stop` | 停止任务中的所有 agent |
 | DELETE | `/api/tasks/:id` | 停止并移除任务 |
 
-一个临时调试面板在 **`/tasks`**（无需构建）：添加 agent、启动、看每个 agent 流式输出、发后续消息。正式的 React 界面会替换它。
+一个临时调试面板在 **`/tasks`**（无需构建）：添加 agent、启动、看每个 agent 流式输出、发后续消息。
+
+**在应用里**：工具栏的 **Bot** 按钮（或 ⌘K → *Agent 任务*）会以弹窗打开同一块面板 —— 给每个 agent 指定模型，点启动，看它们同台竞速；排行榜显示轮次、Token、成本、耗时，最便宜 / 最快完成的 agent 会有皇冠标记。
+
+![agent 任务 —— 两个模型对拍，带每-agent 排行榜](dev/shot-tasks.png?v=2)
 
 > task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
 

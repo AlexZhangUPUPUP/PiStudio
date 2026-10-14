@@ -446,6 +446,52 @@ async function main() {
   await sleep(600)
   await escape()
 
+  /* ------------------------------------------------------------ tasks ---- */
+  await attempt('tasks', async () => {
+    // close any leftover modal (the /dialogtest step may have left one open)
+    await ev(
+      `(()=>{document.querySelectorAll('[role="dialog"]').forEach(d=>{const b=[...d.querySelectorAll('button')].find(x=>/cancel|close/i.test(x.textContent||'')||x.querySelector('svg.lucide-x'));b?.click()});return true})()`,
+    )
+    await escape()
+    await open('pi-gui:open-tasks')
+    await waitFor(`!!document.querySelector('[aria-label="Agent tasks"] textarea')`, 'tasks modal', 8000)
+    await sleep(300)
+    await ev(
+      `(()=>{const el=document.querySelector('[aria-label="Agent tasks"] textarea');` +
+        `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,'In one short sentence: what is this project?');` +
+        `el.dispatchEvent(new Event('input',{bubbles:true}));return true})()`,
+    )
+    await ev(
+      `(()=>{const ins=[...document.querySelectorAll('[aria-label="Agent tasks"] input')];const m=ins[3];if(!m)return false;` +
+        `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(m,'deepseek/deepseek-v4-pro');` +
+        `m.dispatchEvent(new Event('input',{bubbles:true}));return true})()`,
+    )
+    await sleep(200)
+    await ev(
+      `(()=>{const b=[...document.querySelectorAll('[aria-label="Agent tasks"] button')].find(b=>/Launch/.test(b.textContent||''));b?.click();return !!b})()`,
+    )
+    await sleep(2000)
+    {
+      const t0 = Date.now()
+      let settled = false
+      while (Date.now() - t0 < 90000) {
+        const s = String(await ev(`document.querySelector('[aria-label="Agent tasks"]')?.innerText || ''`))
+        if (!/running|starting/.test(s) && /idle|done|failed|stopped/.test(s)) {
+          settled = true
+          break
+        }
+        // slow model still running? capture anyway once there is real content
+        if (Date.now() - t0 > 50000 && /\$\d/.test(s)) break
+        await sleep(1000)
+      }
+      log('  · tasks settled=' + settled)
+    }
+    await sleep(1200)
+    await shot('shot-tasks.png')
+  })
+  await escape()
+  await sleep(600)
+
   /* ------------------------------------------------------------- 中文 UI - */
   await attempt('zh', async () => {
     await closeDock()

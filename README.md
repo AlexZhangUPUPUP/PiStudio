@@ -191,7 +191,14 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | DELETE | `/api/tasks/:id` | stop and forget the task |
 
 A throwaway debug board is served at **`/tasks`** (no build step): add agents,
-launch, watch each stream, send follow-ups. The real React UI will replace it.
+launch, watch each stream, send follow-ups.
+
+**In the app:** the toolbar **Bot** button (or ⌘K → *Agent tasks*) opens the same
+board as a modal — give every agent a model, hit Launch, and watch them race. A
+leaderboard shows turns, tokens, cost and time, and the cheapest / fastest
+finished agent is badged.
+
+![agent tasks — race two models, with a per-agent leaderboard](dev/shot-tasks.png?v=2)
 
 > Tasks are spawned by PiStudio itself. That is different from the
 > **Inspector → Agents** view, which merely observes pi's own `subagent`

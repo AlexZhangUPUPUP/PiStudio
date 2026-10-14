@@ -177,6 +177,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
         run: () => setLang(lang === 'zh' ? 'en' : 'zh'),
       },
       { label: t('palette.sessions'), hint: '', run: () => window.dispatchEvent(new CustomEvent('pi-gui:open-sessions')) },
+      { label: t('tasks.title'), hint: '', run: () => window.dispatchEvent(new CustomEvent('pi-gui:open-tasks')) },
       { label: t('dock.trace'), hint: t('palette.trace'), run: () => window.dispatchEvent(new CustomEvent('pi-gui:open-trace')) },
       { label: t('dock.changes'), hint: t('palette.changes'), run: () => window.dispatchEvent(new CustomEvent('pi-gui:open-changes')) },
       { label: t('palette.context'), hint: '', run: () => window.dispatchEvent(new CustomEvent('pi-gui:open-context')) },

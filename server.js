@@ -1439,7 +1439,10 @@ function startTaskAgent(task, agent, spec) {
         agent.usage = evt.message.usage;
       } else if (evt.type === 'agent_settled') {
         agent.status = 'idle';
+        agent.turns += 1;
         refreshTaskStatus(task);
+      } else if (evt.type === 'tool_execution_start' && evt.toolName) {
+        agent.tools[evt.toolName] = (agent.tools[evt.toolName] || 0) + 1;
       }
     } catch {
       /* preview only — never break the stream */
@@ -1537,6 +1540,8 @@ function createTask(opts) {
       text: '',
       thinking: '',
       usage: null,
+      tools: {},
+      turns: 0,
       events: [],
     };
     task.agents.set(agent.id, agent);
@@ -1595,6 +1600,8 @@ function taskAgentInfo(a) {
     text: a.text.slice(-4000),
     thinking: a.thinking.slice(-2000),
     usage: a.usage || null,
+    tools: a.tools || {},
+    turns: a.turns || 0,
     eventCount: a.events.length,
   };
 }
