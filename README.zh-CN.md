@@ -171,6 +171,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | POST | `/api/tasks/:id/promote-all` | 一次性应用所有隔离 agent 的改动 |
 | POST | `/api/tasks/:id/cleanup` | 移除该任务的 git worktree |
 | GET | `/api/observed-agents` | pi 自己的子 agent 进程（只读） |
+| POST | `/api/observed-agents/:pid/stop` | 停止一个观测到的子 agent |
+| POST | `/api/tasks/adopt` | 把观测到的子 agent 收编成自己的 task 重跑 |
 | POST | `/api/tasks/:id/stop` | 停止任务中的所有 agent |
 | DELETE | `/api/tasks/:id` | 停止并移除任务 |
 
@@ -188,7 +190,7 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 
 **合并** 则真正解决冲突，而不只是报告：它把 agent 的 worktree 和你的工作区做三方合并（`git merge-file --diff3`），让你把每个冲突区选为 **保留当前** / **采用 agent** / **两者都要** 再应用。被覆盖的文件会先备份到 `traces/merge-<stamp>/`。二进制或超大文件则整文件二选一（**保留当前** / **采用 agent**）。
 
-面板还会列出**观测到的子 agent** —— 主会话里由 pi 自己的 `subagent` 扩展启动的进程 —— 只读，和 PiStudio 自己管的 task 并列显示（`GET /api/observed-agents`）。
+面板还会列出**观测到的子 agent** —— 主会话里由 pi 自己的 `subagent` 扩展启动的进程 —— 显示是否还活着，可以**停止**，也可以**收编**（作为我们自己的任务 agent 重跑，获得 worktree 隔离、重试、diff、合并、预算等完整能力），和 PiStudio 自己管的 task 并列显示（`GET /api/observed-agents`）。
 
 > task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
 

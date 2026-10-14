@@ -79,6 +79,11 @@ window.PI_I18N = {
     'tasks.observed': 'Observed sub-agents',
     'tasks.observedHint': "spawned by pi's subagent extension (read-only)",
     'tasks.observedNone': 'No observed sub-agents',
+    'tasks.adopt': 'Adopt',
+    'tasks.adoptHint': 're-run as an owned task agent',
+    'tasks.sourceTask': 'task',
+    'tasks.sourceObserved': 'observed',
+    'tasks.exited': 'exited',
 
     // usage / spend
     'usage.title': 'Usage & spend',
@@ -664,6 +669,11 @@ window.PI_I18N = {
     'tasks.observed': '观测到的子 agent',
     'tasks.observedHint': '由 pi 的 subagent 扩展启动（只读）',
     'tasks.observedNone': '没有观测到子 agent',
+    'tasks.adopt': '收编',
+    'tasks.adoptHint': '作为我们自己的任务 agent 重新跑',
+    'tasks.sourceTask': '任务',
+    'tasks.sourceObserved': '观测',
+    'tasks.exited': '已退出',
 
     // usage / spend
     'usage.title': '用量与花费',

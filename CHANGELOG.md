@@ -15,6 +15,19 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — unify observed sub-agents with tasks
+
+### Added
+- observed pi sub-agents can now be **stopped**
+  (`POST /api/observed-agents/:pid/stop`) and **adopted**
+  (`POST /api/tasks/adopt`) into an owned, isolated task agent that gets the full
+  workflow (worktree, retry, diff, merge, budget).
+- `/api/observed-agents` reports `alive` per agent; exited agents show as `exited`
+  with Stop disabled, and stopping an already-exited agent returns
+  `{ ok:true, already:true }` instead of an error.
+
+---
+
 ## 2026-10-14 — global budgets, binary merge, observed sub-agents
 
 ### Added

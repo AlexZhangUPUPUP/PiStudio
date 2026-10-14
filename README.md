@@ -194,6 +194,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | POST | `/api/tasks/:id/promote-all` | apply every isolated agent's changes at once |
 | POST | `/api/tasks/:id/cleanup` | remove the task's git worktrees |
 | GET | `/api/observed-agents` | pi's own sub-agent processes (read-only) |
+| POST | `/api/observed-agents/:pid/stop` | stop an observed sub-agent |
+| POST | `/api/tasks/adopt` | re-run an observed sub-agent as an owned task |
 | POST | `/api/tasks/:id/stop` | stop every agent in the task |
 | DELETE | `/api/tasks/:id` | stop and forget the task |
 
@@ -229,8 +231,10 @@ applying. Anything the merge overwrites is backed up under `traces/merge-<stamp>
 Binary or oversized files are merged whole instead (**Keep ours** / **Use agent's**).
 
 The board also lists **observed sub-agents** — processes spawned by pi's own
-`subagent` extension in the main session — read-only, next to the tasks
-PiStudio owns (`GET /api/observed-agents`).
+`subagent` extension in the main session. Each shows whether it is still alive,
+can be **stopped**, or **adopted** — re-run as an owned task agent that gets the
+full workflow (worktree isolation, retry, diff, merge, budget) — next to the
+tasks PiStudio owns (`GET /api/observed-agents`).
 
 > Tasks are spawned by PiStudio itself. That is different from the
 > **Inspector → Agents** view, which merely observes pi's own `subagent`

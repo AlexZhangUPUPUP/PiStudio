@@ -1,12 +1,13 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Combine, Crown, Plus, Play, RotateCcw, Send, Square, Trash2, X, GitBranch, FileDiff, GitMerge } from 'lucide-react'
+import { Combine, Crown, Plus, Play, RotateCcw, Send, Square, Trash2, UserPlus, X, GitBranch, FileDiff, GitMerge } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { usePi } from '@/store/pi'
 import { cn } from '@/lib/utils'
 import {
+  adoptObservedAgent,
   agentDiff,
   createTask,
   fmtCost,
@@ -22,6 +23,7 @@ import {
   restartAgent,
   sendAgentCommand,
   stopAgent,
+  stopObservedAgent,
   stopTask,
   usageCost,
   usageTokens,
@@ -168,6 +170,20 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const refreshObserved = useCallback(async () => {
     setObserved(await getObservedAgents())
   }, [])
+
+  const stopObservedNow = async (pid: number | null) => {
+    if (pid == null) return
+    await stopObservedAgent(pid)
+    refreshObserved()
+  }
+
+  const adoptObservedNow = async (o: ObservedAgent) => {
+    const adopted = await adoptObservedAgent({ key: o.key, task: o.task, model: o.model })
+    if (adopted) {
+      setTask(adopted)
+      refreshRecent()
+    }
+  }
 
   useEffect(() => {
     if (open) refreshRecent()
@@ -455,6 +471,14 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                     className="flex items-center gap-2 border-b border-border/60 px-2 py-1 text-[11px] last:border-b-0"
                   >
                     <span className="shrink-0 font-medium">{o.key}</span>
+                    <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                      {t('tasks.sourceObserved')}
+                    </span>
+                    {o.alive === false && (
+                      <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                        {t('tasks.exited')}
+                      </span>
+                    )}
                     {o.model && <span className="truncate font-mono text-muted-foreground">{o.model}</span>}
                     {o.pid != null && <span className="shrink-0 font-mono text-muted-foreground">pid {o.pid}</span>}
                     <span
@@ -463,6 +487,25 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                     >
                       {o.task || ''}
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 shrink-0 text-muted-foreground"
+                      title={t('tasks.stop')}
+                      disabled={o.pid == null || o.alive === false}
+                      onClick={() => stopObservedNow(o.pid)}
+                    >
+                      <Square className="size-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 shrink-0 gap-1 px-2 text-[11px]"
+                      title={t('tasks.adoptHint')}
+                      onClick={() => adoptObservedNow(o)}
+                    >
+                      <UserPlus className="size-3" /> {t('tasks.adopt')}
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -478,6 +521,9 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
               <div className="mb-2 flex items-center gap-3">
                 <StatusPill status={task.status} />
                 <span className="font-mono text-[11px] text-muted-foreground">{task.id}</span>
+                <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                  {t('tasks.sourceTask')}
+                </span>
                 <span className="truncate font-mono text-[11px] text-muted-foreground" title={task.cwd}>
                   {task.cwd}
                 </span>

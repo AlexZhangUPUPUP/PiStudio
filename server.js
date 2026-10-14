@@ -37,6 +37,8 @@
  *   POST /api/tasks/:id/stop   -> stop every agent in the task
  *   DELETE /api/tasks/:id      -> stop and forget the task
  *   GET  /api/observed-agents  -> sub-agents observed across live sessions
+ *   POST /api/observed-agents/:pid/stop -> SIGTERM an observed sub-agent
+ *   POST /api/tasks/adopt       -> re-run an observed sub-agent as an owned task
  *
  * Usage:
  *   node server.js [--port 4173] [--host 127.0.0.1] [--cwd DIR] [--pi /path/to/pi] [-- <pi args>]
@@ -2026,6 +2028,53 @@ function pruneTasks() {
   }
 }
 
+/**
+ * Observed sub-agents across every live session: the inspector-registered
+ * entries whose key is not 'main' (the server's own pi process). Shared by the
+ * GET listing and by the stop/adopt handlers so they all see the same registry.
+ */
+function observedAgents() {
+  const agents = [];
+  for (const [sid, sess] of sessions) {
+    const main = sess.agents.get('main');
+    const mainPid = main && main.pid ? main.pid : sess.child ? sess.child.pid : null;
+    for (const a of sess.agents.values()) {
+      if (a.key === 'main') continue;
+      let ppid = null;
+      if (a.parentKey === 'main') ppid = mainPid;
+      else {
+        const m = /^pid:(\d+)$/.exec(a.parentKey || '');
+        if (m) ppid = Number(m[1]);
+      }
+      agents.push({
+        session: sid,
+        key: a.key,
+        pid: a.pid,
+        ppid,
+        model: a.model,
+        task: a.task,
+        startedAt: a.startedAt,
+        lastAt: a.lastAt,
+        count: a.count,
+        alive: pidAlive(Number(a.pid) || 0),
+      });
+    }
+  }
+  agents.sort((x, y) => (y.lastAt || 0) - (x.lastAt || 0));
+  return agents;
+}
+
+/** True when a pid exists (EPERM means it exists but is not ours). */
+function pidAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return !!(err && err.code === 'EPERM');
+  }
+}
+
 // ---------------------------------------------------------------- http
 
 /** No inline scripts anywhere, so scripts stay 'self'; inline *styles* are used by
@@ -2326,33 +2375,25 @@ const server = http.createServer((req, res) => {
   }
 
   if (p === '/api/observed-agents') {
-    const agents = [];
-    for (const [sid, sess] of sessions) {
-      const main = sess.agents.get('main');
-      const mainPid = main && main.pid ? main.pid : sess.child ? sess.child.pid : null;
-      for (const a of sess.agents.values()) {
-        if (a.key === 'main') continue;
-        let ppid = null;
-        if (a.parentKey === 'main') ppid = mainPid;
-        else {
-          const m = /^pid:(\d+)$/.exec(a.parentKey || '');
-          if (m) ppid = Number(m[1]);
-        }
-        agents.push({
-          session: sid,
-          key: a.key,
-          pid: a.pid,
-          ppid,
-          model: a.model,
-          task: a.task,
-          startedAt: a.startedAt,
-          lastAt: a.lastAt,
-          count: a.count,
-        });
-      }
+    return sendJson(res, 200, { agents: observedAgents() });
+  }
+
+  if (p.startsWith('/api/observed-agents/') && p.endsWith('/stop') && req.method === 'POST') {
+    const parts = p.split('/').filter(Boolean); // api / observed-agents / <pid> / stop
+    const pid = Number(parts[2]);
+    // Only signal a pid currently in the observed registry (observedAgents()
+    // already excludes 'main', so the server's own pi can never be killed here).
+    const agent = observedAgents().find((a) => a.pid === pid);
+    if (!agent) return sendJson(res, 404, { ok: false, error: 'unknown observed agent' });
+    if (!agent.alive) return sendJson(res, 200, { ok: true, already: true });
+    try {
+      process.kill(pid, 'SIGTERM');
+      return sendJson(res, 200, { ok: true });
+    } catch (err) {
+      // the process may have exited between the check and the signal
+      if (err && err.code === 'ESRCH') return sendJson(res, 200, { ok: true, already: true });
+      return sendJson(res, 200, { ok: false, error: String((err && err.message) || err) });
     }
-    agents.sort((x, y) => (y.lastAt || 0) - (x.lastAt || 0));
-    return sendJson(res, 200, { agents });
   }
 
   if (p === '/api/files') {
@@ -2560,6 +2601,35 @@ const server = http.createServer((req, res) => {
       }
       try {
         const task = createTask(b);
+        return sendJson(res, 201, { task: taskInfo(task) });
+      } catch (err) {
+        return sendJson(res, 400, { error: String((err && err.message) || err) });
+      }
+    });
+  }
+
+  if (p === '/api/tasks/adopt' && req.method === 'POST') {
+    return readBody(req, (body) => {
+      let b = {};
+      try {
+        b = JSON.parse(body || '{}');
+        if (!b || typeof b !== 'object' || Array.isArray(b)) b = {};
+      } catch {
+        return sendJson(res, 400, { error: 'invalid JSON' });
+      }
+      const key = b.key == null ? '' : String(b.key);
+      const agent = observedAgents().find((a) => a.key === key);
+      if (!agent) return sendJson(res, 404, { error: 'unknown observed agent' });
+      const prompt = String((b && b.task) || agent.task || '').trim();
+      if (!prompt) return sendJson(res, 400, { error: 'no task text to adopt' });
+      // Adopt = re-run: spawn a fresh, owned task agent with the observed
+      // agent's prompt/model. It does NOT take over the existing process.
+      try {
+        const task = createTask({
+          cwd: CWD,
+          isolate: b.isolate !== false,
+          agents: [{ name: 'adopted', model: (b && b.model) || agent.model || undefined, prompt }],
+        });
         return sendJson(res, 201, { task: taskInfo(task) });
       } catch (err) {
         return sendJson(res, 400, { error: String((err && err.message) || err) });

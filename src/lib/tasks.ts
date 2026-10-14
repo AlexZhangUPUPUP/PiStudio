@@ -133,6 +133,7 @@ export interface ObservedAgent {
   startedAt: number | null
   lastAt: number | null
   count: number
+  alive?: boolean
 }
 
 async function jget<T>(path: string): Promise<T | null> {
@@ -159,6 +160,36 @@ export async function getTask(id: string): Promise<TaskInfo | null> {
 export async function getObservedAgents(): Promise<ObservedAgent[]> {
   const d = await jget<{ agents: ObservedAgent[] }>('/api/observed-agents')
   return d?.agents || []
+}
+
+/** Stop one observed sub-agent by pid (best-effort). */
+export async function stopObservedAgent(pid: number): Promise<boolean> {
+  try {
+    const r = await fetch(apiUrl(`/api/observed-agents/${encodeURIComponent(pid)}/stop`), { method: 'POST' })
+    return r.ok
+  } catch {
+    return false
+  }
+}
+
+/** Adopt an observed sub-agent as a new owned task. Resolves to the task, or null. */
+export async function adoptObservedAgent(a: {
+  key: string
+  task?: string | null
+  model?: string | null
+}): Promise<TaskInfo | null> {
+  try {
+    const r = await fetch(apiUrl('/api/tasks/adopt'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: a.key, task: a.task ?? undefined, model: a.model ?? undefined }),
+    })
+    const d = await r.json().catch(() => null)
+    if (!r.ok) return null
+    return (d as { task?: TaskInfo } | null)?.task || null
+  } catch {
+    return null
+  }
 }
 
 export async function createTask(body: CreateTaskBody): Promise<TaskInfo | { error: string }> {
