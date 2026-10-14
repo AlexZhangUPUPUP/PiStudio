@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PiStudio · agent tasks (debug)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1012;
+        --panel: #17181b;
+        --line: #2a2c31;
+        --text: #e6e7ea;
+        --muted: #8b8f98;
+        --accent: #5fa04e;
+        --blue: #6a9ffb;
+        --warn: #d9a441;
+        --err: #e06c75;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+      header .sub { color: var(--muted); font-size: 12px; }
+      header a { color: var(--blue); text-decoration: none; }
+      main { padding: 16px; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+      .row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+      input, textarea, button {
+        font: inherit;
+        color: var(--text);
+        background: #101114;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 6px 8px;
+      }
+      input.name { width: 110px; }
+      input.model { width: 240px; }
+      textarea.prompt { flex: 1; resize: vertical; min-height: 34px; }
+      .pwrap { flex: 1; display: flex; }
+      button {
+        cursor: pointer;
+        background: #1c1e22;
+      }
+      button:hover { border-color: #3a3d44; }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #08130a; font-weight: 600; }
+      button.x { padding: 6px 9px; color: var(--muted); }
+      .toolbar { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+      .board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; }
+      .col {
+        flex: 0 0 360px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        max-height: 74vh;
+      }
+      .col > .head { padding: 9px 11px; border-bottom: 1px solid var(--line); }
+      .col .name { font-weight: 600; }
+      .col .meta { color: var(--muted); font-size: 11px; }
+      .col .body {
+        flex: 1;
+        overflow: auto;
+        padding: 10px 11px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      .col .foot { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+      .col .foot input { flex: 1; }
+      .pill {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 999px;
+        font-size: 10px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+      }
+      .pill.running { color: var(--blue); border-color: #2c4a80; }
+      .pill.done { color: var(--accent); border-color: #2c5a2a; }
+      .pill.failed, .pill.error { color: var(--err); border-color: #6a2b30; }
+      .think { color: var(--muted); font-style: italic; }
+      .empty { color: var(--muted); }
+      .tasklist { display: flex; flex-wrap: wrap; gap: 8px; }
+      .tasklist a { color: var(--blue); text-decoration: none; font-size: 12px; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>PiStudio · agent tasks</h1>
+      <span class="sub">debug board — spawn N pi processes on one prompt</span>
+      <span class="sub" style="margin-left:auto"><a href="/">← back to PiStudio</a></span>
+    </header>
+    <main>
+      <div class="card">
+        <div id="rows"></div>
+        <div class="toolbar">
+          <button id="add">+ agent</button>
+          <button id="launch" class="primary">Launch task</button>
+          <span id="status" class="hint"></span>
+        </div>
+        <div class="hint">
+          Each agent is its own <code>pi --mode rpc</code> process. Set a model (e.g.
+          <code>deepseek/deepseek-v4-pro</code>) to race models on the same prompt.
+        </div>
+      </div>
+
+      <div class="card" id="recent" hidden>
+        <div class="sub" style="color:var(--muted);margin-bottom:6px">recent tasks</div>
+        <div class="tasklist" id="tasklist"></div>
+      </div>
+
+      <div class="board" id="board"></div>
+    </main>
+    <script src="/tasks.js"></script>
+  </body>
+</html>

@@ -142,6 +142,35 @@ browser / Electron ──SSE  /api/events──▶  Node server ──stdout JSO
 
 轨迹文件、已保存会话列表和文件索引按工作目录（而非按标签页）保存。
 
+## Agent 任务（实验性）
+
+一个 **task** 是由 GUI 自己启动的一组 `pi` 进程 —— 不绑定浏览器标签页 —— 因此一条 prompt 可以同时分发给多个 agent，各自使用不同的模型、角色或工具白名单。这是后续编排界面（并行 agent、模型对拍）的运行时。
+
+```bash
+curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
+  "label": "race",
+  "agents": [
+    { "name": "flash", "prompt": "用一句话概括 server.js。" },
+    { "name": "pro", "model": "deepseek/deepseek-v4-pro",
+      "prompt": "用一句话概括 server.js。" }
+  ]
+}'
+```
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/api/tasks` | 列出任务 |
+| POST | `/api/tasks` | 创建任务 —— `{ label?, cwd?, agents: [{ name?, model?, systemPrompt?, tools?, thinking?, prompt? }] }` |
+| GET | `/api/tasks/:id` | 任务详情（agent + 缓存事件） |
+| GET | `/api/tasks/:id/events` | 所有 agent 事件的 SSE 流，每条带 `__agent` 标记 |
+| POST | `/api/tasks/:id/agents/:aid/command` | 给某个 agent 发 RPC 命令（`{ "message": "…" }` 是 prompt 简写） |
+| POST | `/api/tasks/:id/stop` | 停止任务中的所有 agent |
+| DELETE | `/api/tasks/:id` | 停止并移除任务 |
+
+一个临时调试面板在 **`/tasks`**（无需构建）：添加 agent、启动、看每个 agent 流式输出、发后续消息。正式的 React 界面会替换它。
+
+> task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
+
 ## 语言
 
 UI 内置英文和中文。工具栏的 `中 / EN` 按钮可以即时切换：状态栏、轨迹面板、会话树、过滤器、对话框和通知都会原位重新渲染——无需刷新页面。该选择保存在 `localStorage`（`pi-gui-lang`）中；首次访问时它会跟随 `navigator.language`。
@@ -507,6 +536,8 @@ pistudio/
   dev/make-screenshots.mjs regenerates dev/shot-*.png from the React UI
   dev/package.mjs         builds the macOS .app / .dmg (@electron/packager + hdiutil)
   dev/dialogs-demo.ts     extension exercising every dialog/UI method (/dialogtest)
+  dev/task-debug.html     /tasks — debug board for the agent-task runtime
+  dev/task-debug.js
   dev/shot-*.png          screenshots (referenced by this README)
   traces/                 persisted traces (gitignored)
 ```

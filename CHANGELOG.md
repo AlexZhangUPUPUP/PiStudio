@@ -15,6 +15,26 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — agent task runtime (orchestration groundwork)
+
+### Added
+- **agent tasks** — a runtime for spawning a *group* of `pi` processes the GUI
+  owns, independent of any browser tab. `POST /api/tasks` fans one prompt out to
+  several agents, each with its own `--model` / `--append-system-prompt` /
+  `--tools` / `--thinking`, with lifecycle (`running`/`idle`/`stopped`/`done`),
+  per-agent SSE and buffered replay. Endpoints: `GET|POST /api/tasks`,
+  `GET /api/tasks/:id`, `GET /api/tasks/:id/events`,
+  `POST /api/tasks/:id/agents/:aid/command`, `POST /api/tasks/:id/stop`,
+  `DELETE /api/tasks/:id`.
+- a throwaway **`/tasks`** debug board (`dev/task-debug.html` + `dev/task-debug.js`)
+  to launch agents and watch them stream — no build step.
+
+> Groundwork for the orchestration views. Separate from the existing
+> **Inspector → Agents** view, which only *observes* pi's own `subagent` example
+> extension (see **Sub-agents**).
+
+---
+
 ## 2026-10-14 — open-source hygiene: npm package, CI, install guide
 
 ### Added

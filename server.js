@@ -24,6 +24,14 @@
  *   GET  /api/search?q=        -> full-text search across saved sessions
  *   GET  /api/changes?c=       -> working-tree changes (git) + per-file diff
  *   POST /api/changes/revert   -> back up and revert one file
+ *   GET  /tasks                -> tiny debug page for agent tasks
+ *   GET  /api/tasks            -> list agent tasks
+ *   POST /api/tasks            -> spawn a task (a group of agents)
+ *   GET  /api/tasks/:id        -> task detail (agents + buffered events)
+ *   GET  /api/tasks/:id/events -> SSE stream of every agent's events
+ *   POST /api/tasks/:id/agents/:aid/command -> RPC command to one agent
+ *   POST /api/tasks/:id/stop   -> stop every agent in the task
+ *   DELETE /api/tasks/:id      -> stop and forget the task
  *
  * Usage:
  *   node server.js [--port 4173] [--host 127.0.0.1] [--cwd DIR] [--pi /path/to/pi] [-- <pi args>]
@@ -215,6 +223,14 @@ function readTraceRecords(file) {
 
 /** @type {Map<string, any>} */
 const sessions = new Map();
+
+/* Agent tasks — the runtime behind orchestration views. A task owns a group of
+ * `pi` processes that the GUI spawns itself, independent of any browser tab,
+ * so one prompt can fan out to several agents (different model / role / tools). */
+const tasks = new Map();
+const TASK_KEEP = 20; // newest N tasks kept in memory
+const TASK_EVENT_CAP = 4000; // events retained per agent (for replay)
+const MAX_TASK_AGENTS = 16;
 
 function createSession(id) {
   const sess = {
@@ -1335,6 +1351,289 @@ function searchSessions(query, limit) {
   return { query: q, scanned, truncated, results };
 }
 
+/* --------------------------------------------------------------- tasks
+ * One task = N `pi` processes the GUI spawns itself. Each agent gets its own
+ * argv (model / role / tool allowlist) and its own event stream, tagged with
+ * the agent id. Nothing here depends on a browser tab.
+ */
+
+function newTaskId() {
+  return 'task-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+}
+
+/** Build the pi argv for one task agent from its spec. */
+function taskAgentArgs(spec) {
+  const args = ['--mode', 'rpc'];
+  if (spec.model) args.push('--model', String(spec.model));
+  const think = spec.thinking || spec.think;
+  if (think) args.push('--thinking', String(think));
+  if (spec.systemPrompt) args.push('--append-system-prompt', String(spec.systemPrompt));
+  if (spec.tools) {
+    args.push('--tools', Array.isArray(spec.tools) ? spec.tools.join(',') : String(spec.tools));
+  }
+  if (spec.excludeTools) {
+    args.push(
+      '--exclude-tools',
+      Array.isArray(spec.excludeTools) ? spec.excludeTools.join(',') : String(spec.excludeTools),
+    );
+  }
+  args.push(...PI_ARGS);
+  return args;
+}
+
+/** Record + fan out one event from a task agent. */
+function emitTask(task, agent, evt) {
+  task.seq += 1;
+  const rec = { seq: task.seq, t: Date.now(), evt };
+  agent.events.push(rec);
+  if (agent.events.length > TASK_EVENT_CAP) {
+    agent.events.splice(0, agent.events.length - TASK_EVENT_CAP);
+  }
+  agent.lastAt = rec.t;
+  const payload = `data: ${JSON.stringify({ ...evt, __agent: agent.id, __seq: rec.seq, __t: rec.t })}\n\n`;
+  for (const res of task.clients) {
+    try {
+      res.write(payload);
+    } catch {
+      /* dropped on close */
+    }
+  }
+  return rec;
+}
+
+function startTaskAgent(task, agent, spec) {
+  let child;
+  try {
+    child = spawn(PI_BIN, taskAgentArgs(spec), {
+      cwd: task.cwd,
+      env: { ...process.env, PI_GUI_TASK: task.id, PI_GUI_AGENT: agent.id },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    agent.status = 'error';
+    emitTask(task, agent, { type: '__proc', status: 'error', message: String((err && err.message) || err) });
+    refreshTaskStatus(task);
+    return;
+  }
+  agent.child = child;
+  agent.alive = true;
+  agent.pid = child.pid;
+  agent.status = 'running';
+  emitTask(task, agent, { type: '__proc', status: 'started', pid: child.pid, cwd: task.cwd, model: agent.model });
+
+  attachJsonlReader(child.stdout, (line) => {
+    let evt;
+    try {
+      evt = JSON.parse(line);
+    } catch {
+      emitTask(task, agent, { type: '__raw', stream: 'stdout', text: line });
+      return;
+    }
+    // keep a cheap preview for the list/debug views
+    try {
+      const e = evt.assistantMessageEvent;
+      if (evt.type === 'message_update' && e) {
+        if (e.type === 'text_delta' && e.delta) agent.text = (agent.text + e.delta).slice(-20000);
+        else if (e.type === 'thinking_delta' && e.delta) agent.thinking = (agent.thinking + e.delta).slice(-8000);
+      } else if (evt.type === 'message_end' && evt.message && evt.message.usage) {
+        agent.usage = evt.message.usage;
+      } else if (evt.type === 'agent_settled') {
+        agent.status = 'idle';
+        refreshTaskStatus(task);
+      }
+    } catch {
+      /* preview only — never break the stream */
+    }
+    emitTask(task, agent, evt);
+  });
+
+  attachJsonlReader(child.stderr, (text) => {
+    emitTask(task, agent, { type: '__stderr', text });
+    process.stderr.write(`[task ${task.id}/${agent.id}] ${text}\n`);
+  });
+
+  child.on('error', (err) => {
+    agent.alive = false;
+    agent.status = 'error';
+    emitTask(task, agent, { type: '__proc', status: 'error', message: String((err && err.message) || err) });
+    refreshTaskStatus(task);
+  });
+
+  child.on('exit', (code, signal) => {
+    agent.alive = false;
+    agent.child = null;
+    agent.exitCode = code;
+    agent.endedAt = Date.now();
+    agent.status = task.stopping ? 'stopped' : code === 0 ? 'done' : 'failed';
+    emitTask(task, agent, { type: '__proc', status: 'exit', code, signal, stopped: !!task.stopping });
+    refreshTaskStatus(task);
+  });
+
+  if (agent.prompt) sendToTaskAgent(task, agent, { type: 'prompt', message: agent.prompt });
+}
+
+function sendToTaskAgent(task, agent, cmd) {
+  if (!agent.child || !agent.child.stdin.writable) return false;
+  try {
+    agent.child.stdin.write(JSON.stringify(cmd) + '\n');
+    if (cmd && cmd.type === 'prompt' && agent.status !== 'running') {
+      agent.status = 'running';
+      refreshTaskStatus(task);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function refreshTaskStatus(task) {
+  const agents = [...task.agents.values()];
+  if (!agents.length) return;
+  if (agents.some((a) => a.alive && a.status === 'running')) {
+    task.status = 'running';
+    task.endedAt = null;
+    return;
+  }
+  if (agents.some((a) => a.alive)) {
+    task.status = 'idle';
+    return;
+  }
+  const bad = agents.some((a) => a.status === 'failed' || a.status === 'error');
+  const stopped = agents.some((a) => a.status === 'stopped');
+  task.status = bad ? 'failed' : stopped ? 'stopped' : 'done';
+  task.endedAt = task.endedAt || Date.now();
+}
+
+function createTask(opts) {
+  const specs = (Array.isArray(opts.agents) ? opts.agents : []).filter((s) => s && typeof s === 'object');
+  if (!specs.length) throw new Error('at least one agent spec is required');
+  const task = {
+    id: newTaskId(),
+    label: opts.label ? String(opts.label) : null,
+    cwd: path.resolve(opts.cwd || CWD),
+    status: 'running',
+    createdAt: Date.now(),
+    endedAt: null,
+    clients: new Set(),
+    seq: 0,
+    agents: new Map(),
+  };
+  tasks.set(task.id, task);
+  specs.slice(0, MAX_TASK_AGENTS).forEach((spec, i) => {
+    const agent = {
+      id: 'a' + (i + 1),
+      name: spec.name ? String(spec.name) : `agent ${i + 1}`,
+      model: spec.model ? String(spec.model) : null,
+      role: spec.role ? String(spec.role) : null,
+      prompt: spec.prompt ? String(spec.prompt) : null,
+      child: null,
+      alive: false,
+      status: 'starting',
+      pid: null,
+      exitCode: null,
+      startedAt: Date.now(),
+      endedAt: null,
+      lastAt: Date.now(),
+      text: '',
+      thinking: '',
+      usage: null,
+      events: [],
+    };
+    task.agents.set(agent.id, agent);
+    startTaskAgent(task, agent, spec);
+  });
+  pruneTasks();
+  return task;
+}
+
+function stopTask(task, callback) {
+  task.stopping = true;
+  const running = [...task.agents.values()].filter((a) => a.child);
+  if (!running.length) {
+    refreshTaskStatus(task);
+    if (callback) callback();
+    return;
+  }
+  let left = running.length;
+  const done = () => {
+    if (--left <= 0) {
+      refreshTaskStatus(task);
+      if (callback) callback();
+    }
+  };
+  for (const a of running) {
+    const c = a.child;
+    c.once('exit', done);
+    try {
+      c.kill('SIGTERM');
+    } catch {
+      done();
+    }
+    setTimeout(() => {
+      if (a.child === c) {
+        try {
+          c.kill('SIGKILL');
+        } catch {}
+      }
+    }, 2000).unref?.();
+  }
+}
+
+function taskAgentInfo(a) {
+  return {
+    id: a.id,
+    name: a.name,
+    model: a.model,
+    role: a.role,
+    status: a.status,
+    pid: a.pid,
+    alive: a.alive,
+    exitCode: a.exitCode,
+    startedAt: a.startedAt,
+    endedAt: a.endedAt,
+    lastAt: a.lastAt,
+    text: a.text.slice(-4000),
+    thinking: a.thinking.slice(-2000),
+    usage: a.usage || null,
+    eventCount: a.events.length,
+  };
+}
+
+function taskInfo(task) {
+  return {
+    id: task.id,
+    label: task.label,
+    cwd: task.cwd,
+    status: task.status,
+    createdAt: task.createdAt,
+    endedAt: task.endedAt,
+    clientCount: task.clients.size,
+    seq: task.seq,
+    agents: [...task.agents.values()].map(taskAgentInfo),
+  };
+}
+
+function taskDetail(task) {
+  const info = taskInfo(task);
+  info.agents = info.agents.map((a) => ({ ...a, events: task.agents.get(a.id).events }));
+  return info;
+}
+
+function pruneTasks() {
+  if (tasks.size <= TASK_KEEP) return;
+  const finished = [...tasks.values()]
+    .filter((t) => t.status !== 'running')
+    .sort((a, b) => a.createdAt - b.createdAt);
+  while (tasks.size > TASK_KEEP && finished.length) {
+    const t = finished.shift();
+    try {
+      stopTask(t);
+    } catch {}
+    for (const a of t.agents.values()) a.events = [];
+    tasks.delete(t.id);
+  }
+}
+
 // ---------------------------------------------------------------- http
 
 /** No inline scripts anywhere, so scripts stay 'self'; inline *styles* are used by
@@ -1425,7 +1724,7 @@ const server = http.createServer((req, res) => {
   const p = url.pathname;
   const cid = url.searchParams.get('c') || 'default';
 
-  if (AUTH_TOKEN && p.startsWith('/api/')) {
+  if (AUTH_TOKEN && (p.startsWith('/api/') || p === '/tasks')) {
     const supplied = url.searchParams.get('token') || req.headers['x-pi-gui-token'];
     if (supplied !== AUTH_TOKEN) {
       return sendJson(res, 401, { error: 'unauthorized: missing or wrong token' });
@@ -1761,6 +2060,111 @@ const server = http.createServer((req, res) => {
       }
     });
     return;
+  }
+
+  /* ---------------------------------------------------------- agent tasks */
+
+  if (p === '/tasks' || p === '/tasks.js') {
+    const file = path.join(__dirname, 'dev', p === '/tasks' ? 'task-debug.html' : 'task-debug.js');
+    fs.readFile(file, (err, buf) => {
+      if (err) return sendJson(res, 404, { error: 'debug page missing (dev/task-debug.html)' });
+      res.writeHead(200, {
+        'Content-Type': p === '/tasks' ? MIME['.html'] : MIME['.js'],
+        'Cache-Control': 'no-cache',
+        ...SECURITY_HEADERS,
+      });
+      res.end(buf);
+    });
+    return;
+  }
+
+  if (p === '/api/tasks' && req.method === 'GET') {
+    const list = [...tasks.values()].sort((a, b) => b.createdAt - a.createdAt).map(taskInfo);
+    return sendJson(res, 200, { tasks: list });
+  }
+
+  if (p === '/api/tasks' && req.method === 'POST') {
+    return readBody(req, (body) => {
+      let b = {};
+      try {
+        b = JSON.parse(body || '{}');
+      } catch {
+        return sendJson(res, 400, { error: 'invalid JSON' });
+      }
+      try {
+        const task = createTask(b);
+        return sendJson(res, 201, { task: taskInfo(task) });
+      } catch (err) {
+        return sendJson(res, 400, { error: String((err && err.message) || err) });
+      }
+    });
+  }
+
+  if (p.startsWith('/api/tasks/')) {
+    const parts = p.split('/').filter(Boolean); // api / tasks / <id> / …
+    const task = tasks.get(parts[2]);
+    if (!task) return sendJson(res, 404, { error: 'unknown task' });
+
+    if (parts.length === 3 && req.method === 'GET') return sendJson(res, 200, { task: taskDetail(task) });
+
+    if (parts.length === 3 && req.method === 'DELETE') {
+      return stopTask(task, () => {
+        tasks.delete(task.id);
+        sendJson(res, 200, { ok: true });
+      });
+    }
+
+    if (parts.length === 4 && parts[3] === 'stop' && req.method === 'POST') {
+      return stopTask(task, () => sendJson(res, 200, { task: taskInfo(task) }));
+    }
+
+    if (parts.length === 4 && parts[3] === 'events') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        ...SECURITY_HEADERS,
+      });
+      res.write('retry: 1000\n\n');
+      task.clients.add(res);
+      res.write(`data: ${JSON.stringify({ type: '__hello', task: taskInfo(task), seq: task.seq })}\n\n`);
+      for (const a of task.agents.values()) {
+        for (const rec of a.events) {
+          try {
+            res.write(`data: ${JSON.stringify({ ...rec.evt, __agent: a.id, __seq: rec.seq, __t: rec.t, __replay: true })}\n\n`);
+          } catch {}
+        }
+      }
+      const hb = setInterval(() => {
+        try {
+          res.write(': hb\n\n');
+        } catch {}
+      }, 15000);
+      req.on('close', () => {
+        clearInterval(hb);
+        task.clients.delete(res);
+      });
+      return;
+    }
+
+    if (parts.length === 6 && parts[3] === 'agents' && parts[5] === 'command' && req.method === 'POST') {
+      const agent = task.agents.get(parts[4]);
+      if (!agent) return sendJson(res, 404, { error: 'unknown agent' });
+      return readBody(req, (body) => {
+        let cmd = {};
+        try {
+          cmd = JSON.parse(body || '{}');
+        } catch {
+          return sendJson(res, 400, { error: 'invalid JSON' });
+        }
+        if (!cmd.type && cmd.message) cmd = { type: 'prompt', message: String(cmd.message) };
+        const ok = sendToTaskAgent(task, agent, cmd);
+        return sendJson(res, ok ? 200 : 409, { ok, agent: agent.id });
+      });
+    }
+
+    return sendJson(res, 404, { error: 'not found' });
   }
 
   serveStatic(res, p);

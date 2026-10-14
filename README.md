@@ -162,6 +162,41 @@ Every browser tab drives **its own `pi` process**. The tab keeps a random id in
 Trace files, the saved-session list and the file index stay per working
 directory, not per tab.
 
+## Agent tasks (experimental)
+
+A **task** is a group of `pi` processes the GUI spawns itself — not tied to a
+browser tab — so one prompt can fan out to several agents at once with different
+models, roles or tool allowlists. This is the runtime under the planned
+orchestration views (parallel agents, model races).
+
+```bash
+curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
+  "label": "race",
+  "agents": [
+    { "name": "flash", "prompt": "Summarise server.js in one sentence." },
+    { "name": "pro", "model": "deepseek/deepseek-v4-pro",
+      "prompt": "Summarise server.js in one sentence." }
+  ]
+}'
+```
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/tasks` | list tasks |
+| POST | `/api/tasks` | spawn a task — `{ label?, cwd?, agents: [{ name?, model?, systemPrompt?, tools?, thinking?, prompt? }] }` |
+| GET | `/api/tasks/:id` | task detail (agents + buffered events) |
+| GET | `/api/tasks/:id/events` | SSE stream of every agent's events, each tagged `__agent` |
+| POST | `/api/tasks/:id/agents/:aid/command` | send an RPC command to one agent (`{ "message": "…" }` is a prompt shorthand) |
+| POST | `/api/tasks/:id/stop` | stop every agent in the task |
+| DELETE | `/api/tasks/:id` | stop and forget the task |
+
+A throwaway debug board is served at **`/tasks`** (no build step): add agents,
+launch, watch each stream, send follow-ups. The real React UI will replace it.
+
+> Tasks are spawned by PiStudio itself. That is different from the
+> **Inspector → Agents** view, which merely observes pi's own `subagent`
+> example extension — see **Sub-agents**.
+
 ## Languages
 
 The UI ships in English and Chinese. The toolbar `中 / EN` button switches
@@ -697,6 +732,8 @@ pistudio/
   dev/make-screenshots.mjs regenerates dev/shot-*.png from the React UI
   dev/package.mjs         builds the macOS .app / .dmg (@electron/packager + hdiutil)
   dev/dialogs-demo.ts     extension exercising every dialog/UI method (/dialogtest)
+  dev/task-debug.html     /tasks — debug board for the agent-task runtime
+  dev/task-debug.js
   dev/shot-*.png          screenshots (referenced by this README)
   traces/                 persisted traces (gitignored)
 ```
