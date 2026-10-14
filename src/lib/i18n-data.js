@@ -49,6 +49,13 @@ window.PI_I18N = {
     'tasks.compareTitle': 'Compare answers',
     'tasks.compareHint': 'Tick two agents to diff their answers',
     'tasks.selectOnly2': 'Select exactly two agents',
+    'tasks.isolated': 'isolated worktree',
+    'tasks.worktree': 'worktree',
+    'tasks.diff': 'Diff',
+    'tasks.promote': 'Promote',
+    'tasks.promoteApplied': 'Applied {n} file(s)',
+    'tasks.promoteConflicts': 'Conflicts in {n} file(s)',
+    'tasks.notIsolated': 'Shared working tree (not a git repo, or isolation is off)',
 
     // usage / spend
     'usage.title': 'Usage & spend',
@@ -594,6 +601,13 @@ window.PI_I18N = {
     'tasks.compareTitle': '对比回答',
     'tasks.compareHint': '勾选两个 agent 来 diff 它们的回答',
     'tasks.selectOnly2': '请正好选择两个 agent',
+    'tasks.isolated': '独立 worktree',
+    'tasks.worktree': 'worktree',
+    'tasks.diff': '差异',
+    'tasks.promote': '合并回主干',
+    'tasks.promoteApplied': '已应用 {n} 个文件',
+    'tasks.promoteConflicts': '{n} 个文件有冲突',
+    'tasks.notIsolated': '共享工作区（非 git 仓库，或已关闭隔离）',
 
     // usage / spend
     'usage.title': '用量与花费',

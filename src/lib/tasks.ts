@@ -42,6 +42,8 @@ export interface TaskAgent {
   tools: Record<string, number>
   turns: number
   eventCount: number
+  worktree: string | null
+  branch: string | null
 }
 
 export interface TaskInfo {
@@ -69,6 +71,30 @@ export interface CreateTaskBody {
   label?: string
   cwd?: string
   agents: AgentSpec[]
+}
+
+export interface AgentDiffFile {
+  path: string
+  add: number
+  del: number
+  status?: string
+}
+
+export interface AgentDiff {
+  ok: boolean
+  error?: string
+  worktree?: string | null
+  branch?: string | null
+  base?: string | null
+  files?: AgentDiffFile[]
+  diff?: string
+}
+
+export interface PromoteResult {
+  ok: boolean
+  applied: string[]
+  conflicts: string[]
+  error?: string
 }
 
 async function jget<T>(path: string): Promise<T | null> {
@@ -161,6 +187,57 @@ export async function stopTask(id: string): Promise<void> {
     await fetch(apiUrl(`/api/tasks/${encodeURIComponent(id)}/stop`), { method: 'POST' })
   } catch {
     /* ignore */
+  }
+}
+
+/** Fetch the working-tree diff of one agent's isolated worktree. */
+export async function agentDiff(taskId: string, agentId: string): Promise<AgentDiff | null> {
+  try {
+    const r = await fetch(
+      apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/diff`),
+    )
+    if (!r.ok) return null
+    return (await r.json()) as AgentDiff
+  } catch {
+    return null
+  }
+}
+
+/** Promote (merge back) the changes of one agent's isolated worktree. */
+export async function promoteAgent(taskId: string, agentId: string): Promise<PromoteResult | null> {
+  try {
+    const r = await fetch(
+      apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/promote`),
+      { method: 'POST' },
+    )
+    const d = await r.json().catch(() => null)
+    if (!r.ok) {
+      return {
+        ok: false,
+        applied: [],
+        conflicts: [],
+        error: String((d as { error?: string } | null)?.error || r.status),
+      }
+    }
+    const dd = d as { ok?: boolean; applied?: string[]; conflicts?: string[]; error?: string } | null
+    return {
+      ok: !!dd?.ok,
+      applied: dd?.applied || [],
+      conflicts: dd?.conflicts || [],
+      error: dd?.error,
+    }
+  } catch (err) {
+    return { ok: false, applied: [], conflicts: [], error: String((err as Error)?.message || err) }
+  }
+}
+
+/** Clean up a task's isolated worktrees / temp resources. */
+export async function cleanupTask(taskId: string): Promise<boolean> {
+  try {
+    const r = await fetch(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/cleanup`), { method: 'POST' })
+    return r.ok
+  } catch {
+    return false
   }
 }
 

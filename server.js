@@ -46,6 +46,7 @@ const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const { StringDecoder } = require('string_decoder');
 const { openIndex } = require('./db');
+const worktree = require('./worktree');
 
 // ---------------------------------------------------------------- options
 
@@ -1439,9 +1440,10 @@ function emitTask(task, agent, evt) {
 
 function startTaskAgent(task, agent, spec) {
   let child;
+  const agentCwd = agent.worktree ? agent.worktree.path : task.cwd;
   try {
     child = spawn(PI_BIN, taskAgentArgs(spec), {
-      cwd: task.cwd,
+      cwd: agentCwd,
       env: { ...process.env, PI_GUI_TASK: task.id, PI_GUI_AGENT: agent.id },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -1455,7 +1457,7 @@ function startTaskAgent(task, agent, spec) {
   agent.alive = true;
   agent.pid = child.pid;
   agent.status = 'running';
-  emitTask(task, agent, { type: '__proc', status: 'started', pid: child.pid, cwd: task.cwd, model: agent.model });
+  emitTask(task, agent, { type: '__proc', status: 'started', pid: child.pid, cwd: agentCwd, model: agent.model });
 
   attachJsonlReader(child.stdout, (line) => {
     if (agent.child !== child) return; // stale reader from a replaced process
@@ -1566,9 +1568,23 @@ function createTask(opts) {
     agents: new Map(),
   };
   tasks.set(task.id, task);
+
+  // Each agent runs in its own git worktree (unless isolation is disabled), so
+  // parallel agents cannot clobber each other. Any failure falls back to cwd.
+  const isolate = opts.isolate !== false;
+  let isolateRoot = null;
+  if (isolate) {
+    try {
+      isolateRoot = worktree.isGitRepo(task.cwd) ? task.cwd : null;
+    } catch {
+      isolateRoot = null;
+    }
+  }
+
   specs.slice(0, MAX_TASK_AGENTS).forEach((spec, i) => {
+    const agentId = 'a' + (i + 1);
     const agent = {
-      id: 'a' + (i + 1),
+      id: agentId,
       name: spec.name ? String(spec.name) : `agent ${i + 1}`,
       model: spec.model ? String(spec.model) : null,
       role: spec.role ? String(spec.role) : null,
@@ -1588,7 +1604,20 @@ function createTask(opts) {
       tools: {},
       turns: 0,
       events: [],
+      worktree: null,
     };
+    if (isolateRoot) {
+      try {
+        const wt = worktree.createWorktree({ cwd: isolateRoot, taskId: task.id, agentId });
+        agent.worktree = { path: wt.path, branch: wt.branch, base: wt.base };
+        process.stderr.write(`[task ${task.id}/${agent.id}] worktree ${wt.branch}\n`);
+      } catch (err) {
+        process.stderr.write(
+          `[task ${task.id}/${agent.id}] worktree failed (${(err && err.message) || err}); falling back to ${task.cwd}\n`,
+        );
+        agent.worktree = null;
+      }
+    }
     task.agents.set(agent.id, agent);
     startTaskAgent(task, agent, spec);
   });
@@ -1715,6 +1744,8 @@ function taskAgentInfo(a) {
     tools: a.tools || {},
     turns: a.turns || 0,
     eventCount: a.events.length,
+    worktree: a.worktree ? a.worktree.path : null,
+    branch: a.worktree ? a.worktree.branch : null,
   };
 }
 
@@ -1738,6 +1769,19 @@ function taskDetail(task) {
   return info;
 }
 
+/** Remove every worktree an isolated task created (best effort). */
+function cleanupTaskWorktrees(task) {
+  for (const a of task.agents.values()) {
+    if (!a.worktree) continue;
+    try {
+      worktree.removeWorktree({ cwd: task.cwd, path: a.worktree.path, branch: a.worktree.branch });
+    } catch (err) {
+      process.stderr.write(`[task ${task.id}/${a.id}] worktree cleanup failed: ${(err && err.message) || err}\n`);
+    }
+    a.worktree = null;
+  }
+}
+
 function pruneTasks() {
   if (tasks.size <= TASK_KEEP) return;
   const finished = [...tasks.values()]
@@ -1747,6 +1791,9 @@ function pruneTasks() {
     const t = finished.shift();
     try {
       stopTask(t);
+    } catch {}
+    try {
+      cleanupTaskWorktrees(t);
     } catch {}
     for (const a of t.agents.values()) a.events = [];
     tasks.delete(t.id);
@@ -2249,6 +2296,7 @@ const server = http.createServer((req, res) => {
 
     if (parts.length === 3 && req.method === 'DELETE') {
       return stopTask(task, () => {
+        cleanupTaskWorktrees(task);
         tasks.delete(task.id);
         sendJson(res, 200, { ok: true });
       });
@@ -2256,6 +2304,11 @@ const server = http.createServer((req, res) => {
 
     if (parts.length === 4 && parts[3] === 'stop' && req.method === 'POST') {
       return stopTask(task, () => sendJson(res, 200, { task: taskInfo(task) }));
+    }
+
+    if (parts.length === 4 && parts[3] === 'cleanup' && req.method === 'POST') {
+      cleanupTaskWorktrees(task);
+      return sendJson(res, 200, { ok: true });
     }
 
     if (parts.length === 4 && parts[3] === 'events') {
@@ -2302,6 +2355,33 @@ const server = http.createServer((req, res) => {
         const ok = sendToTaskAgent(task, agent, cmd);
         return sendJson(res, ok ? 200 : 409, { ok, agent: agent.id });
       });
+    }
+
+    if (parts.length === 6 && parts[3] === 'agents' && parts[5] === 'diff' && req.method === 'GET') {
+      const agent = task.agents.get(parts[4]);
+      if (!agent) return sendJson(res, 404, { error: 'unknown agent' });
+      if (!agent.worktree) return sendJson(res, 200, { ok: false, error: 'not isolated' });
+      try {
+        const d = worktree.worktreeDiff({ path: agent.worktree.path });
+        return sendJson(res, 200, {
+          ok: true,
+          worktree: agent.worktree.path,
+          branch: agent.worktree.branch,
+          base: agent.worktree.base,
+          files: d.files,
+          diff: d.diff,
+        });
+      } catch (err) {
+        return sendJson(res, 200, { ok: false, error: String((err && err.message) || err) });
+      }
+    }
+
+    if (parts.length === 6 && parts[3] === 'agents' && parts[5] === 'promote' && req.method === 'POST') {
+      const agent = task.agents.get(parts[4]);
+      if (!agent) return sendJson(res, 404, { error: 'unknown agent' });
+      if (!agent.worktree) return sendJson(res, 200, { ok: false, error: 'not isolated' });
+      const out = worktree.promote({ worktree: agent.worktree.path, cwd: task.cwd });
+      return sendJson(res, 200, out);
     }
 
     if (parts.length === 6 && parts[3] === 'agents' && (parts[5] === 'stop' || parts[5] === 'restart') && req.method === 'POST') {

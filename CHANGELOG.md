@@ -15,6 +15,22 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — per-agent git worktree isolation
+
+### Added
+- task agents now run in their **own git worktree** (branch
+  `pistudio/<task>/<agent>`) when the task's directory is a git repo, so parallel
+  agents cannot overwrite each other. `POST /api/tasks` takes `isolate:false` to
+  opt out; non-repo dirs fall back to the shared tree.
+- `GET /api/tasks/:id/agents/:aid/diff` (changed files + unified diff),
+  `POST /api/tasks/:id/agents/:aid/promote` (apply that agent's changes to the
+  working tree with `git apply --3way`, reporting conflicts), and
+  `POST /api/tasks/:id/cleanup` (remove the task's worktrees).
+- the tasks board shows a worktree badge with **Diff** and **Promote** actions.
+- `worktree.js` — pure git-worktree helpers (create / diff / promote / remove).
+
+---
+
 ## 2026-10-14 — usage trends, run history, per-agent control
 
 ### Added

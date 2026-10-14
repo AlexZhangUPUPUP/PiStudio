@@ -488,6 +488,12 @@ async function main() {
     }
     await sleep(1200)
     await shot('shot-tasks.png')
+    // clean up the task's worktrees + branches so repeated runs don't leak them
+    await ev(
+      `(async()=>{const j=await fetch('/api/tasks').then(r=>r.json());const t=(j.tasks||[])[0];if(!t)return false;` +
+        `await fetch('/api/tasks/'+t.id+'/cleanup',{method:'POST'}).catch(()=>{});` +
+        `await fetch('/api/tasks/'+t.id,{method:'DELETE'}).catch(()=>{});return true})()`,
+    )
   })
   await escape()
   await sleep(600)

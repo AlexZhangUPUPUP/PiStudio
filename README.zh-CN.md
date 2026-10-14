@@ -164,6 +164,9 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | GET | `/api/tasks/:id` | 任务详情（agent + 缓存事件） |
 | GET | `/api/tasks/:id/events` | 所有 agent 事件的 SSE 流，每条带 `__agent` 标记 |
 | POST | `/api/tasks/:id/agents/:aid/command` | 给某个 agent 发 RPC 命令（`{ "message": "…" }` 是 prompt 简写） |
+| GET | `/api/tasks/:id/agents/:aid/diff` | 隔离 agent 改动的文件 + 统一 diff |
+| POST | `/api/tasks/:id/agents/:aid/promote` | 把该 agent 的改动应用回工作区 |
+| POST | `/api/tasks/:id/cleanup` | 移除该任务的 git worktree |
 | POST | `/api/tasks/:id/stop` | 停止任务中的所有 agent |
 | DELETE | `/api/tasks/:id` | 停止并移除任务 |
 
@@ -174,6 +177,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 ![agent 任务 —— 两个模型对拍，带每-agent 排行榜](dev/shot-tasks.png?v=2)
 
 每个 agent 都有 **停止** / **重试**（用同一份 spec 重启）按钮；勾选两个 agent 可以用**对比**查看回答的行级 diff。
+
+当任务目录是 git 仓库时，每个 agent 在自己的 **git worktree**（分支 `pistudio/<task>/<agent>`）里运行，所以并行 agent 不会互相覆盖文件。**差异**看单个 agent 改了什么，**合并回主干**把它的改动应用回你的工作区（`git apply --3way`，有冲突会报出来）。给 `POST /api/tasks` 传 `isolate: false` 可关闭隔离。
 
 > task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
 

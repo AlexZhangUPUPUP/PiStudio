@@ -1,24 +1,28 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Crown, Plus, Play, RotateCcw, Send, Square, Trash2, X } from 'lucide-react'
+import { Crown, Plus, Play, RotateCcw, Send, Square, Trash2, X, GitBranch, FileDiff, GitMerge } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { usePi } from '@/store/pi'
 import { cn } from '@/lib/utils'
 import {
+  agentDiff,
   createTask,
   fmtCost,
   fmtElapsed,
   fmtTokens,
   getTask,
   listTasks,
+  promoteAgent,
   restartAgent,
   sendAgentCommand,
   stopAgent,
   stopTask,
   usageCost,
   usageTokens,
+  type AgentDiff,
+  type PromoteResult,
   type TaskAgent,
   type TaskInfo,
 } from '@/lib/tasks'
@@ -140,6 +144,7 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const [recent, setRecent] = useState<TaskInfo[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [compareAgents, setCompareAgents] = useState<[TaskAgent, TaskAgent] | null>(null)
+  const [diffAgent, setDiffAgent] = useState<TaskAgent | null>(null)
   const nextKey = useRef(3)
 
   const refreshRecent = useCallback(async () => {
@@ -171,17 +176,19 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (compareAgents) setCompareAgents(null)
+      if (diffAgent) setDiffAgent(null)
+      else if (compareAgents) setCompareAgents(null)
       else onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose, compareAgents])
+  }, [open, onClose, compareAgents, diffAgent])
 
   // Reset compare selection/overlay whenever the viewed task changes.
   useEffect(() => {
     setSelected([])
     setCompareAgents(null)
+    setDiffAgent(null)
   }, [task?.id])
 
   const addRow = () => {
@@ -243,6 +250,16 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     const a = task.agents.find((x) => x.id === selected[0])
     const b = task.agents.find((x) => x.id === selected[1])
     if (a && b) setCompareAgents([a, b])
+  }
+
+  const openDiff = (agent: TaskAgent) => setDiffAgent(agent)
+
+  const promoteNow = async (aid: string): Promise<PromoteResult | null> => {
+    if (!task) return null
+    const res = await promoteAgent(task.id, aid)
+    const next = await getTask(task.id)
+    if (next) setTask(next)
+    return res
   }
 
   if (!open) return null
@@ -391,6 +408,10 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                 </div>
               </div>
 
+              {agents.length > 0 && !agents.some((a) => a.worktree) && (
+                <div className="mb-2 text-[11px] text-muted-foreground">{t('tasks.notIsolated')}</div>
+              )}
+
               {/* leaderboard */}
               {agents.length > 1 && (
                 <div className="mb-3 overflow-hidden rounded-md border border-border">
@@ -456,6 +477,8 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                     onToggleSelect={() => toggleSelect(a.id)}
                     onStop={() => stopAgentNow(a.id)}
                     onRetry={() => restartAgentNow(a.id)}
+                    onDiff={() => openDiff(a)}
+                    onPromote={() => promoteNow(a.id)}
                   />
                 ))}
               </div>
@@ -474,6 +497,14 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
           onClose={() => setCompareAgents(null)}
         />
       )}
+      {diffAgent && task && (
+        <DiffOverlay
+          taskId={task.id}
+          agent={diffAgent}
+          t={t}
+          onClose={() => setDiffAgent(null)}
+        />
+      )}
     </>
   )
 }
@@ -487,6 +518,8 @@ function AgentColumn({
   onToggleSelect,
   onStop,
   onRetry,
+  onDiff,
+  onPromote,
 }: {
   agent: TaskAgent
   followUp: (msg: string) => Promise<boolean>
@@ -496,9 +529,13 @@ function AgentColumn({
   onToggleSelect: () => void
   onStop: () => Promise<void>
   onRetry: () => Promise<void>
+  onDiff: () => void
+  onPromote: () => Promise<PromoteResult | null>
 }) {
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
+  const [promoting, setPromoting] = useState(false)
+  const [promoteResult, setPromoteResult] = useState<PromoteResult | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
 
@@ -513,6 +550,17 @@ function AgentColumn({
       await fn()
     } finally {
       setPending(false)
+    }
+  }
+
+  const promote = async () => {
+    setPromoting(true)
+    setPromoteResult(null)
+    try {
+      const res = await onPromote()
+      if (res) setPromoteResult(res)
+    } finally {
+      setPromoting(false)
     }
   }
 
@@ -532,7 +580,36 @@ function AgentColumn({
           />
           <span className="truncate text-[12px] font-semibold">{agent.name}</span>
           <StatusPill status={agent.status} />
+          {agent.worktree && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+              <GitBranch className="size-3" />
+              {t('tasks.isolated')}
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-0.5">
+            {agent.worktree && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  title={t('tasks.diff')}
+                  onClick={onDiff}
+                >
+                  <FileDiff className="size-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  title={t('tasks.promote')}
+                  disabled={promoting}
+                  onClick={promote}
+                >
+                  <GitMerge className="size-3" />
+                </Button>
+              </>
+            )}
             {agent.alive ? (
               <Button
                 variant="ghost"
@@ -570,6 +647,20 @@ function AgentColumn({
                 {name}×{n}
               </span>
             ))}
+          </div>
+        )}
+        {promoteResult && (
+          <div
+            className={cn(
+              'mt-1 text-[11px]',
+              promoteResult.error || promoteResult.conflicts.length ? 'text-destructive' : 'text-teal',
+            )}
+          >
+            {promoteResult.error
+              ? promoteResult.error
+              : promoteResult.conflicts.length
+                ? t('tasks.promoteConflicts', { n: promoteResult.conflicts.length })
+                : t('tasks.promoteApplied', { n: promoteResult.applied.length })}
           </div>
         )}
       </div>
@@ -681,6 +772,112 @@ function CompareOverlay({
               </Fragment>
             ))}
           </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function diffTextClass(line: string): string {
+  if (line.startsWith('diff --git') || line.startsWith('@@')) return 'text-muted-foreground'
+  if (line.startsWith('+')) return 'text-teal'
+  if (line.startsWith('-')) return 'text-destructive'
+  return 'text-muted-foreground'
+}
+
+function DiffOverlay({
+  taskId,
+  agent,
+  t,
+  onClose,
+}: {
+  taskId: string
+  agent: TaskAgent
+  t: (k: string, vars?: Record<string, unknown>) => string
+  onClose: () => void
+}) {
+  const [data, setData] = useState<AgentDiff | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    agentDiff(taskId, agent.id).then((d) => {
+      if (!alive) return
+      setData(d)
+      setLoading(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [taskId, agent.id])
+
+  const files = data?.files || []
+  const diffText = data?.diff || ''
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('tasks.diff')}
+        className="flex max-h-[88vh] w-[min(900px,96vw)] animate-fade-in flex-col overflow-hidden rounded-lg border border-border bg-popover text-foreground shadow-xl"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">{t('tasks.diff')}</h2>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">
+              {[agent.name, data?.worktree || agent.worktree, data?.branch || agent.branch].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" className="size-7" onClick={onClose} aria-label={t('common.close')}>
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {loading ? (
+            <div className="py-8 text-center text-[12px] text-muted-foreground">…</div>
+          ) : data?.error ? (
+            <div className="text-[12px] text-destructive">{data.error}</div>
+          ) : (
+            <>
+              {files.length > 0 && (
+                <div className="mb-3 overflow-hidden rounded-md border border-border">
+                  {files.map((f) => (
+                    <div
+                      key={f.path}
+                      className="flex items-center gap-2 border-b border-border/60 px-2 py-1 text-[12px] last:border-b-0"
+                    >
+                      <span className="truncate font-mono">{f.path}</span>
+                      {f.status && <span className="shrink-0 text-[10px] text-muted-foreground">{f.status}</span>}
+                      <span className="ml-auto flex shrink-0 gap-2 font-mono">
+                        {f.add > 0 && <span className="text-teal">+{f.add}</span>}
+                        {f.del > 0 && <span className="text-destructive">-{f.del}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {diffText ? (
+                <pre className="overflow-x-auto whitespace-pre font-mono text-[11px] leading-relaxed">
+                  {diffText.split('\n').map((line, i) => (
+                    <div key={i} className={diffTextClass(line)}>
+                      {line || ' '}
+                    </div>
+                  ))}
+                </pre>
+              ) : (
+                !files.length && <div className="py-8 text-center text-[12px] text-muted-foreground">…</div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>,

@@ -187,6 +187,9 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | GET | `/api/tasks/:id` | task detail (agents + buffered events) |
 | GET | `/api/tasks/:id/events` | SSE stream of every agent's events, each tagged `__agent` |
 | POST | `/api/tasks/:id/agents/:aid/command` | send an RPC command to one agent (`{ "message": "…" }` is a prompt shorthand) |
+| GET | `/api/tasks/:id/agents/:aid/diff` | an isolated agent's changed files + unified diff |
+| POST | `/api/tasks/:id/agents/:aid/promote` | apply that agent's changes to the working tree |
+| POST | `/api/tasks/:id/cleanup` | remove the task's git worktrees |
 | POST | `/api/tasks/:id/stop` | stop every agent in the task |
 | DELETE | `/api/tasks/:id` | stop and forget the task |
 
@@ -202,6 +205,12 @@ finished agent is badged.
 
 Each agent gets **Stop** / **Retry** (respawn with the same spec) controls, and
 you can tick two agents to **Compare** their answers with a line diff.
+
+When the task's directory is a git repo, every agent runs in its **own git
+worktree** (branch `pistudio/<task>/<agent>`), so parallel agents cannot clobber
+each other's files. **Diff** shows exactly what one agent changed, and
+**Promote** applies it back into your working tree (`git apply --3way`, reporting
+conflicts). Pass `isolate: false` to `POST /api/tasks` to opt out.
 
 > Tasks are spawned by PiStudio itself. That is different from the
 > **Inspector → Agents** view, which merely observes pi's own `subagent`
