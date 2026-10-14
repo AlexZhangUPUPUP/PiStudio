@@ -47,9 +47,9 @@ at the `pi` you already have.
 for the optional desktop shell. MIT.
 
 Links:
-- GitHub: https://github.com/AlexZhangUPUPUP/PI-GUI
+- GitHub: https://github.com/AlexZhangUPUPUP/PiStudio
 - npm: https://www.npmjs.com/package/pistudio
-- Install guide: https://github.com/AlexZhangUPUPUP/PI-GUI/blob/main/INSTALL.md
+- Install guide: https://github.com/AlexZhangUPUPUP/PiStudio/blob/main/INSTALL.md
 
 Quick start:
     npm install -g pistudio

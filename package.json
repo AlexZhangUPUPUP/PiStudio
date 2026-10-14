@@ -4,13 +4,13 @@
   "description": "PiStudio — a web + desktop GUI for pi (drives `pi --mode rpc`)",
   "license": "MIT",
   "author": "Alex Zhang",
-  "homepage": "https://github.com/AlexZhangUPUPUP/PI-GUI#readme",
+  "homepage": "https://github.com/AlexZhangUPUPUP/PiStudio#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AlexZhangUPUPUP/PI-GUI.git"
+    "url": "git+https://github.com/AlexZhangUPUPUP/PiStudio.git"
   },
   "bugs": {
-    "url": "https://github.com/AlexZhangUPUPUP/PI-GUI/issues"
+    "url": "https://github.com/AlexZhangUPUPUP/PiStudio/issues"
   },
   "keywords": [
     "pi",

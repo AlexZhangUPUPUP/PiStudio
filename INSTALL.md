@@ -64,7 +64,7 @@ Use this for the desktop (Electron) shell, development, or if you want the
 latest `main`:
 
 ```bash
-git clone https://github.com/AlexZhangUPUPUP/PI-GUI.git pistudio
+git clone https://github.com/AlexZhangUPUPUP/PiStudio.git pistudio
 cd pistudio
 npm install            # installs the frontend + Electron
 npm run link           # optional: symlink pistudio/pigui into ~/.local/bin
