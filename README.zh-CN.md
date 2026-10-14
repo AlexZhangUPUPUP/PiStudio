@@ -12,7 +12,7 @@
 
 [English](README.md) · **简体中文** · [安装](INSTALL.md) · [更新日志](CHANGELOG.md)
 
-<img src="dev/shot-chat-light.png" alt="PiStudio —— 浅色主题下的对话、轨迹与更改" width="860">
+<img src="dev/shot-chat-light.png?v=2" alt="PiStudio —— 浅色主题下的对话、轨迹与更改" width="860">
 
 </div>
 
@@ -81,53 +81,53 @@ browser / Electron ──SSE  /api/events──▶  Node server ──stdout JSO
 
 | 浅色 | 深色 |
 |---|---|
-| ![chat in the light theme](dev/shot-chat-light.png) | ![chat in the dark theme](dev/shot-chat-dark.png) |
+| ![chat in the light theme](dev/shot-chat-light.png?v=2) | ![chat in the dark theme](dev/shot-chat-dark.png?v=2) |
 
 **Trace** —— 每次交互一个分组；每一行都可以展开为原始 JSON 事件
 
 | 浅色 | 深色 |
 |---|---|
-| ![trace panel in the light theme](dev/shot-trace-light.png) | ![trace panel in the dark theme](dev/shot-trace-dark.png) |
+| ![trace panel in the light theme](dev/shot-trace-light.png?v=2) | ![trace panel in the dark theme](dev/shot-trace-dark.png?v=2) |
 
 **Sessions** —— 带书签、分支/克隆、已保存文件的只追加（append-only）分支树
 
 | 分支树 | 已保存会话 |
 |---|---|
-| ![session branch tree](dev/shot-sessions-light.png) | ![saved sessions](dev/shot-session-list.png) |
+| ![session branch tree](dev/shot-sessions-light.png?v=2) | ![saved sessions](dev/shot-session-list.png?v=2) |
 
 **扩展对话框**和**图片附件**
 
 | 对话框（来自 `select`） | 附件 |
 |---|---|
-| ![extension select dialog](dev/shot-dialog-light.png) | ![image attachments](dev/shot-attachments-light.png) |
+| ![extension select dialog](dev/shot-dialog-light.png?v=2) | ![image attachments](dev/shot-attachments-light.png?v=2) |
 
 **每个工具专属的渲染器** —— `edit`/`write` 的 diff、按文件分组的 grep、`read` 的行号边栏（gutter）
 
-![tool renderers](dev/shot-tool-renderers.png)
+![tool renderers](dev/shot-tool-renderers.png?v=2)
 
 **pi 工作期间**，补全弹窗、诊断信息和命令面板
 
 | 运行中 | `@` 文件 | `/` 命令 | 诊断 |
 |---|---|---|---|
-| ![live run state](dev/shot-running.png) | ![file completion](dev/shot-autocomplete.png) | ![command completion](dev/shot-commands.png) | ![diagnostics](dev/shot-diagnostics.png) |
+| ![live run state](dev/shot-running.png?v=2) | ![file completion](dev/shot-autocomplete.png?v=2) | ![command completion](dev/shot-commands.png?v=2) | ![diagnostics](dev/shot-diagnostics.png?v=2) |
 
-![command palette](dev/shot-palette.png)
+![command palette](dev/shot-palette.png?v=2)
 
 **Settings** —— 主题、语言、面板启动器、导出、诊断和重启 pi，都从工具栏进入
 
-![settings modal](dev/shot-settings.png)
+![settings modal](dev/shot-settings.png?v=2)
 
 **Inspector** —— 实时捕获的 pi 内部信息：系统提示词的构成、上下文预算、每次调用的 provider 负载、会话条目树和能力清单
 
 | 系统提示词 | 上下文 | 请求 | 能力 |
 |---|---|---|---|
-| ![system prompt](dev/shot-inspect-prompt.png) | ![context](dev/shot-inspect-context.png) | ![requests](dev/shot-inspect-requests.png) | ![capabilities](dev/shot-inspect-caps.png) |
+| ![system prompt](dev/shot-inspect-prompt.png?v=2) | ![context](dev/shot-inspect-context.png?v=2) | ![requests](dev/shot-inspect-requests.png?v=2) | ![capabilities](dev/shot-inspect-caps.png?v=2) |
 
 ### 停靠面板（dock）—— 轨迹、更改和上下文，始终一键可达
 
-![changes dock view with diff and revert](dev/shot-changes.png)
+![changes dock view with diff and revert](dev/shot-changes.png?v=2)
 
-![context dock view](dev/shot-context.png)
+![context dock view](dev/shot-context.png?v=2)
 
 使用 `node dev/make-screenshots.mjs` 重新生成这些截图 —— 它会自包含地启动一个临时服务器和无头 Chrome，驱动真实的 React UI，并抓取下面每一张图（参见测试）。
 
@@ -148,13 +148,13 @@ UI 内置英文和中文。工具栏的 `中 / EN` 按钮可以即时切换：�
 
 | 中文 | English |
 |---|---|
-| ![中文界面](dev/shot-zh-chat.png) | ![English UI](dev/shot-chat-light.png) |
+| ![中文界面](dev/shot-zh-chat.png?v=2) | ![English UI](dev/shot-chat-light.png?v=2) |
 
 **会话面板 / trace 面板**
 
 | 会话 | 轨迹 |
 |---|---|
-| ![中文会话面板](dev/shot-zh-sessions.png) | ![中文轨迹面板](dev/shot-zh-trace.png) |
+| ![中文会话面板](dev/shot-zh-sessions.png?v=2) | ![中文轨迹面板](dev/shot-zh-trace.png?v=2) |
 
 每一条字符串都放在 `src/lib/i18n-data.js`（`{ en: {...}, zh: {...} }`，逐字复制自旧版的 `legacy/vanilla-ui/i18n.js`）中，并通过 `t(key, vars)`（`src/lib/i18n.ts`）读取；缺失的 key 会回退到英文，因此添加一种语言只需要再增加一个顶层 key。组件直接调用 `t()`，并在语言切换时原位重新渲染。
 

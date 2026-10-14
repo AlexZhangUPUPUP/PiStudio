@@ -12,7 +12,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [Install](INSTALL.md) · [Changelog](CHANGELOG.md)
 
-<img src="dev/shot-chat-light.png" alt="PiStudio — chat, trace and changes in the light theme" width="860">
+<img src="dev/shot-chat-light.png?v=2" alt="PiStudio — chat, trace and changes in the light theme" width="860">
 
 </div>
 
@@ -89,43 +89,43 @@ current app see **Frontend (React + Vite)** and **Testing → React UI**.
 
 | Light | Dark |
 |---|---|
-| ![chat in the light theme](dev/shot-chat-light.png) | ![chat in the dark theme](dev/shot-chat-dark.png) |
+| ![chat in the light theme](dev/shot-chat-light.png?v=2) | ![chat in the dark theme](dev/shot-chat-dark.png?v=2) |
 
 **Trace** — one group per exchange; every row expands to the raw JSON event
 
 | Light | Dark |
 |---|---|
-| ![trace panel in the light theme](dev/shot-trace-light.png) | ![trace panel in the dark theme](dev/shot-trace-dark.png) |
+| ![trace panel in the light theme](dev/shot-trace-light.png?v=2) | ![trace panel in the dark theme](dev/shot-trace-dark.png?v=2) |
 
 **Sessions** — append-only branch tree with bookmarks, fork/clone, saved files
 
 | Branch tree | Saved sessions |
 |---|---|
-| ![session branch tree](dev/shot-sessions-light.png) | ![saved sessions](dev/shot-session-list.png) |
+| ![session branch tree](dev/shot-sessions-light.png?v=2) | ![saved sessions](dev/shot-session-list.png?v=2) |
 
 **Extension dialogs** and **image attachments**
 
 | Dialog (from `select`) | Attachments |
 |---|---|
-| ![extension select dialog](dev/shot-dialog-light.png) | ![image attachments](dev/shot-attachments-light.png) |
+| ![extension select dialog](dev/shot-dialog-light.png?v=2) | ![image attachments](dev/shot-attachments-light.png?v=2) |
 
 **Per-tool renderers** — diff for `edit`/`write`, grep grouped per file, a line
 number gutter for `read`
 
-![tool renderers](dev/shot-tool-renderers.png)
+![tool renderers](dev/shot-tool-renderers.png?v=2)
 
 **While pi is working**, the completion popups, diagnostics, and the palette
 
 | Running | `@` files | `/` commands | Diagnostics |
 |---|---|---|---|
-| ![live run state](dev/shot-running.png) | ![file completion](dev/shot-autocomplete.png) | ![command completion](dev/shot-commands.png) | ![diagnostics](dev/shot-diagnostics.png) |
+| ![live run state](dev/shot-running.png?v=2) | ![file completion](dev/shot-autocomplete.png?v=2) | ![command completion](dev/shot-commands.png?v=2) | ![diagnostics](dev/shot-diagnostics.png?v=2) |
 
-![command palette](dev/shot-palette.png)
+![command palette](dev/shot-palette.png?v=2)
 
 **Settings** — theme, language, panel launchers, export, diagnostics and restart
 pi, out of the toolbar
 
-![settings modal](dev/shot-settings.png)
+![settings modal](dev/shot-settings.png?v=2)
 
 **Inspector** — pi's internals captured live: system prompt composition, context
 budget, per-call provider payloads, the session entry tree, and the capability
@@ -133,13 +133,13 @@ inventory
 
 | System prompt | Context | Requests | Capabilities |
 |---|---|---|---|
-| ![system prompt](dev/shot-inspect-prompt.png) | ![context](dev/shot-inspect-context.png) | ![requests](dev/shot-inspect-requests.png) | ![capabilities](dev/shot-inspect-caps.png) |
+| ![system prompt](dev/shot-inspect-prompt.png?v=2) | ![context](dev/shot-inspect-context.png?v=2) | ![requests](dev/shot-inspect-requests.png?v=2) | ![capabilities](dev/shot-inspect-caps.png?v=2) |
 
 ### The dock — trace, changes and context, always one click away
 
-![changes dock view with diff and revert](dev/shot-changes.png)
+![changes dock view with diff and revert](dev/shot-changes.png?v=2)
 
-![context dock view](dev/shot-context.png)
+![context dock view](dev/shot-context.png?v=2)
 
 Regenerate them with `node dev/make-screenshots.mjs` — a self-contained run that
 starts a throwaway server plus headless Chrome, drives the real React UI, and
@@ -172,13 +172,13 @@ notices all re-render in place — no page reload. The choice is kept in
 
 | 中文 | English |
 |---|---|
-| ![中文界面](dev/shot-zh-chat.png) | ![English UI](dev/shot-chat-light.png) |
+| ![中文界面](dev/shot-zh-chat.png?v=2) | ![English UI](dev/shot-chat-light.png?v=2) |
 
 **会话面板 / trace 面板**
 
 | 会话 | 轨迹 |
 |---|---|
-| ![中文会话面板](dev/shot-zh-sessions.png) | ![中文轨迹面板](dev/shot-zh-trace.png) |
+| ![中文会话面板](dev/shot-zh-sessions.png?v=2) | ![中文轨迹面板](dev/shot-zh-trace.png?v=2) |
 
 Every string lives in `src/lib/i18n-data.js` (`{ en: {...}, zh: {...} }`, copied
 verbatim from the legacy `legacy/vanilla-ui/i18n.js`) and is read through `t(key, vars)`
