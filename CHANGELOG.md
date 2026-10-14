@@ -38,6 +38,10 @@ local days the work happened rather than tagged releases. Newest first.
   and its `.zip`, and `demo.html`; they were only ever excluded at packaging time.
 - README (en/zh) updated for `cli/` and the npm install flow; `dev/package.mjs`
   ignores refreshed.
+- **both READMEs restyled** — centered header with status badges, a hero shot,
+  Quick start up top, a scannable Highlights grid, a linked table of contents,
+  and the long feature list collapsed behind a `<details>`. Also fixed the
+  **Trace** feature block that had been stranded under `## Sub-agents`.
 
 ---
 

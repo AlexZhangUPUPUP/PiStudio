@@ -1,10 +1,53 @@
+<div align="center">
+
 # PiStudio
 
-**English** · [简体中文](README.zh-CN.md)
+**A calm web & desktop GUI for the [pi](https://pi.dev) coding agent.**
 
-A tiny GUI for [pi](https://pi.dev) — runs in the browser **or** as a desktop
-app. It spawns `pi --mode rpc` as a child process and bridges the JSON-RPC
-protocol to the frontend (Server-Sent Events for events, POST for commands).
+[![CI](https://github.com/AlexZhangUPUPUP/PiStudio/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexZhangUPUPUP/PiStudio/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-3da639.svg)](LICENSE)
+[![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-5fa04e.svg?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-6e7681.svg)](#)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-8a5cf6.svg)](https://github.com/AlexZhangUPUPUP/PiStudio/pulls)
+
+[English](README.md) · [简体中文](README.zh-CN.md) · [Install](INSTALL.md) · [Changelog](CHANGELOG.md)
+
+<img src="dev/shot-chat-light.png" alt="PiStudio — chat, trace and changes in the light theme" width="860">
+
+</div>
+
+## Quick start
+
+```bash
+# from source (works today)
+git clone https://github.com/AlexZhangUPUPUP/PiStudio.git
+cd PiStudio && npm install && npm run link
+cd ~/my-project && pistudio          # desktop window, falls back to the browser
+
+# once published to npm
+npm install -g pistudio
+```
+
+`pistudio` runs **pi in the current directory** — it spawns `pi --mode rpc` and
+puts a UI on top. PiStudio does **not** bundle `pi`, so install it first
+(`npm i -g @earendil-works/pi-coding-agent`) and complete its setup once. Full
+walkthrough: **[INSTALL.md](INSTALL.md)**.
+
+## Highlights
+
+| | |
+|---|---|
+| 💬 **Chat** | streaming text + thinking, Markdown, syntax highlighting, image paste |
+| 🧰 **Tool cards** | pi's real diffs, grep grouped per file, line-numbered reads, copy buttons |
+| 🔭 **Dock** | trace · changes (review & revert) · context — resizable and remembered |
+| 🗂 **Sessions** | every workspace, branch tree, bookmarks, fork, full-text search |
+| 🧩 **Sub-agents** | each gets its own pane; the Inspector shows their internals live |
+| 🌗 **Two shells** | browser tab **or** native Electron window — one server, one UI |
+| 🌍 **i18n** | English / 简体中文, switched in place, no reload |
+| 🛡 **Local-first** | binds to loopback; CSP + a token if you expose it beyond |
+
+<details>
+<summary><b>How it works</b></summary>
 
 ```
 browser / Electron ──SSE  /api/events──▶  Node server ──stdout JSONL──▶ pi --mode rpc
@@ -12,18 +55,33 @@ browser / Electron ──SSE  /api/events──▶  Node server ──stdout JSO
 ```
 
 The server (`server.js`) is zero-dependency plain Node; the frontend is React +
-TypeScript + Vite + Tailwind (`src/` → built into `dist/`), and Electron is only
-needed for the desktop shell.
+TypeScript + Vite + Tailwind (`src/` → built into `dist/`); Electron is only the
+optional desktop shell.
 
-> **Migration note.** The UI was migrated from a hand-written vanilla frontend to
-> React. That original frontend is archived under `legacy/vanilla-ui/`, and the
-> parts of this document that mention `public/*`, plain-CSS design tokens or the
-> `dev/cdp-test.mjs` suite describe it, not the current app. For the current
-> frontend see **Frontend (React + Vite)** and **Testing → React UI**.
+</details>
 
-See [CHANGELOG.md](CHANGELOG.md) for what changed when, and the reasoning behind the
-non-obvious decisions. See [INSTALL.md](INSTALL.md) for a step-by-step install
-guide — or, once published, just `npm install -g pistudio`.
+<details>
+<summary><b>Migration note</b> — the UI moved from a vanilla frontend to React</summary>
+
+The original frontend is archived under `legacy/vanilla-ui/`. Parts of this
+document that mention `public/*`, plain-CSS design tokens or the
+`dev/cdp-test.mjs` suite describe that archive, not the current app. For the
+current app see **Frontend (React + Vite)** and **Testing → React UI**.
+
+</details>
+
+---
+
+## Contents
+
+- [Screenshots](#screenshots)
+- [Multiple tabs](#multiple-tabs) · [Languages](#languages) · [Desktop shell](#desktop-shell) · [Design language](#design-language)
+- [Features](#features)
+- [Sub-agents](#sub-agents)
+- [Run — browser](#run--browser) · [Run — desktop](#run--desktop-electron) · [Packaging (macOS)](#packaging-macos)
+- [Options](#options) · [HTTP API](#http-api)
+- [Frontend](#frontend-react--vite) · [Files](#files) · [Testing](#testing)
+- [Notes / limitations](#notes--limitations)
 
 ## Screenshots
 
@@ -176,6 +234,9 @@ To tweak the legacy look, edit only the token blocks at the top of
 `legacy/vanilla-ui/style.css` — every legacy component reads from them.
 
 ## Features
+
+<details>
+<summary>📖 <b>Expand the full feature tour</b> — sessions, chat, the dock, operations, extension UI, inspector</summary>
 
 **Sessions — every session, always visible**
 - a **permanent sidebar** listing every session pi has saved **across all
@@ -402,6 +463,21 @@ every handler is pass-through, so nothing about pi's behaviour changes.
 Captures live in memory per session and are appended to `traces/inspect-*.jsonl`,
 so they survive a reload. `--no-inspector` turns the whole thing off.
 
+**Trace** — per-exchange execution log (toolbar → **Trace**)
+- grouped per conversation turn with duration, tool count, tokens, cost
+- prompts, assistant messages + stop reason + usage, tool calls with
+  duration/status/output, dialogs **and the answers**, compaction, retries,
+  queue updates, process/stderr, extension errors
+- streaming `message_update` events behind a **deltas** toggle
+- every row expands to raw JSON; persisted to `traces/run-<ts>.jsonl`; history
+  dropdown, NDJSON export, clear
+- each user bubble has a **trace** button that jumps to its exchange
+- each group header carries a **waterfall** of tool durations and a **touched
+  files** chip (`3 files`, hover for paths)
+- **export the conversation as Markdown** (⌘K → *Export conversation (.md)*)
+
+</details>
+
 ## Sub-agents
 
 pi has **no built-in sub-agents** — that is a deliberate design choice:
@@ -446,19 +522,6 @@ a sub-agent) and links children to the parent through `ppid`.
 In the GUI: **Inspector → Agents** lists the tree, and the header selector switches
 every tab to that agent. Undo the install with
 `rm -rf ~/.pi/agent/extensions/subagent ~/.pi/agent/agents ~/.pi/agent/prompts`.
-
-**Trace** — per-exchange execution log (toolbar → **Trace**)
-- grouped per conversation turn with duration, tool count, tokens, cost
-- prompts, assistant messages + stop reason + usage, tool calls with
-  duration/status/output, dialogs **and the answers**, compaction, retries,
-  queue updates, process/stderr, extension errors
-- streaming `message_update` events behind a **deltas** toggle
-- every row expands to raw JSON; persisted to `traces/run-<ts>.jsonl`; history
-  dropdown, NDJSON export, clear
-- each user bubble has a **trace** button that jumps to its exchange
-- each group header carries a **waterfall** of tool durations and a **touched
-  files** chip (`3 files`, hover for paths)
-- **export the conversation as Markdown** (⌘K → *Export conversation (.md)*)
 
 ## Run — browser
 
@@ -724,3 +787,12 @@ theirs and show an *answered in another tab* toast.
   splitting the file.
 - Session entries are immutable and append-only, so the GUI cannot delete a node
   or rewrite history — only bookmark it, fork from it, or delete the whole file.
+
+---
+
+<div align="center">
+
+<sub><b>PiStudio</b> — built for <a href="https://pi.dev">pi</a>. Not affiliated with the pi project.<br>
+<a href="INSTALL.md">Install</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT License</a></sub>
+
+</div>

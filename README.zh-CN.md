@@ -1,19 +1,79 @@
+<div align="center">
+
 # PiStudio
 
-[English](README.md) · **简体中文**
+**一个用于 [pi](https://pi.dev) 的、安静好用的 Web & 桌面 GUI。**
 
-一个用于 [pi](https://pi.dev) 的轻量级 GUI —— 既可以在浏览器中运行，**也可以**作为桌面应用运行。它以子进程方式启动 `pi --mode rpc`，并把 JSON-RPC 协议桥接到前端（事件使用 Server-Sent Events，命令使用 POST）。
+[![CI](https://github.com/AlexZhangUPUPUP/PiStudio/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexZhangUPUPUP/PiStudio/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-3da639.svg)](LICENSE)
+[![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-5fa04e.svg?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-6e7681.svg)](#)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-8a5cf6.svg)](https://github.com/AlexZhangUPUPUP/PiStudio/pulls)
+
+[English](README.md) · **简体中文** · [安装](INSTALL.md) · [更新日志](CHANGELOG.md)
+
+<img src="dev/shot-chat-light.png" alt="PiStudio —— 浅色主题下的对话、轨迹与更改" width="860">
+
+</div>
+
+## 快速开始
+
+```bash
+# 从源码（当前可用）
+git clone https://github.com/AlexZhangUPUPUP/PiStudio.git
+cd PiStudio && npm install && npm run link
+cd ~/my-project && pistudio          # 桌面窗口；未装 Electron 时回退到浏览器
+
+# 发布到 npm 后
+npm install -g pistudio
+```
+
+`pistudio` 会在**当前目录**运行 pi —— 它启动 `pi --mode rpc` 并在上层提供 UI。PiStudio **不打包 pi**，请先安装（`npm i -g @earendil-works/pi-coding-agent`）并完成一次配置。完整说明见 **[INSTALL.md](INSTALL.md)**。
+
+## 亮点
+
+| | |
+|---|---|
+| 💬 **对话** | 流式文本 + thinking、Markdown、语法高亮、粘贴图片 |
+| 🧰 **工具卡片** | pi 的真实 diff、按文件分组的 grep、带行号的 read、复制按钮 |
+| 🔭 **停靠面板** | 轨迹 · 更改（审阅与回滚）· 上下文 —— 可调宽并记住 |
+| 🗂 **会话** | 跨所有工作区、分支树、书签、fork、全文搜索 |
+| 🧩 **子 agent** | 各自独立面板；Inspector 实时展示其内部 |
+| 🌗 **两种外壳** | 浏览器标签页 **或** 原生 Electron 窗口 —— 同服务器、同 UI |
+| 🌍 **多语言** | 中文 / English，就地切换，无需刷新 |
+| 🛡 **本地优先** | 只绑定回环地址；对外暴露时启用 CSP + token |
+
+<details>
+<summary><b>工作原理</b></summary>
 
 ```
 browser / Electron ──SSE  /api/events──▶  Node server ──stdout JSONL──▶ pi --mode rpc
                    ──POST /api/command─▶              ──stdin  JSONL──▶ pi --mode rpc
 ```
 
-服务器（`server.js`）是零依赖的原生 Node；前端是 React + TypeScript + Vite + Tailwind（`src/` → 构建到 `dist/`），而 Electron 仅用于桌面外壳。
+服务器（`server.js`）是零依赖的原生 Node；前端是 React + TypeScript + Vite + Tailwind（`src/` → 构建到 `dist/`）；Electron 仅用于可选的桌面外壳。
 
-> **迁移说明。** UI 已从一个手写的原生（vanilla）前端迁移到 React。那个原始前端归档在 `legacy/vanilla-ui/` 下，本文档中提及 `public/*`、纯 CSS 设计 token 或 `dev/cdp-test.mjs` 测试套件的部分描述的都是它，而不是当前应用。关于当前前端，请参见 **Frontend (React + Vite)** 和 **Testing → React UI**。
+</details>
 
-关于什么在何时发生了变化，以及那些非显而易见决策背后的理由，请参见 [CHANGELOG.md](CHANGELOG.md)。
+<details>
+<summary><b>迁移说明</b> —— UI 从原生前端迁移到 React</summary>
+
+原始前端归档在 `legacy/vanilla-ui/` 下。本文档中提及 `public/*`、纯 CSS 设计 token 或 `dev/cdp-test.mjs` 测试套件的部分描述的是它，而不是当前应用。关于当前应用，请参见 **前端（React + Vite）** 和 **测试 → React UI**。
+
+</details>
+
+---
+
+## 目录
+
+- [截图](#截图)
+- [多标签页](#多标签页) · [语言](#语言) · [桌面外壳](#桌面外壳) · [设计语言](#设计语言)
+- [功能](#功能)
+- [子 agent](#子-agent)
+- [运行 —— 浏览器](#运行--浏览器) · [运行 —— 桌面](#运行--桌面electron) · [打包（macOS）](#打包macos)
+- [选项](#选项) · [HTTP API](#http-api)
+- [前端](#前端react--vite) · [文件](#文件) · [测试](#测试)
+- [注意事项 / 局限](#注意事项--局限)
 
 ## 截图
 
@@ -134,6 +194,9 @@ UI 内置英文和中文。工具栏的 `中 / EN` 按钮可以即时切换：�
 要调整旧版外观，只需编辑 `legacy/vanilla-ui/style.css` 顶部的 token 块——每个旧版组件都从它们那里读取。
 
 ## 功能
+
+<details>
+<summary>📖 <b>展开完整功能清单</b> —— 会话、对话、停靠面板、运维、扩展 UI、Inspector</summary>
 
 **Sessions —— 每个会话，始终可见**
 - 一个**常驻侧边栏**，列出 pi **跨所有工作区**保存的每个会话，按项目分组——服务器的当前工作目录不是过滤器，因此昨天在另一个仓库里的会话也只需一次点击
@@ -256,6 +319,17 @@ UI 内置英文和中文。工具栏的 `中 / EN` 按钮可以即时切换：�
 
 捕获内容按会话存放在内存中，并追加到 `traces/inspect-*.jsonl`，因此刷新后仍然存在。`--no-inspector` 会关闭整个功能。
 
+**Trace** —— 每次交互的执行日志（工具栏 → **Trace**）
+- 按对话轮次分组，包含时长、工具数、token、成本
+- 提示词、assistant 消息 + 停止原因 + 用量、带时长/状态/输出的工具调用、对话框**以及答案**、压缩、重试、队列更新、进程/stderr、扩展错误
+- 流式 `message_update` 事件位于 **deltas** 开关之后
+- 每一行都可展开为原始 JSON；持久化到 `traces/run-<ts>.jsonl`；历史下拉框、NDJSON 导出、清除
+- 每个用户气泡都有一个 **trace** 按钮，可以跳转到它对应的交互
+- 每个分组头部带有一个工具时长的**瀑布图**和一个 **touched files** 标签（`3 files`，悬停查看路径）
+- **将对话导出为 Markdown**（⌘K → *Export conversation (.md)*）
+
+</details>
+
 ## 子 agent
 
 pi **没有内置的子 agent** —— 这是一个刻意的设计选择：
@@ -289,15 +363,6 @@ chain     subagent({ chain: [{agent:"scout",task:"…"}, {agent:"worker",task:"u
 子 agent 由 pi 生成，而不是由这个 GUI 生成 —— 但它们从父进程继承了 `PI_GUI_URL` / `PI_GUI_SESSION`，并从 `~/.pi/agent/extensions/` 获取 `extensions/inspector.ts`，因此**它们会自我报告**：它们的系统提示词、上下文组装、provider 请求、工具结果 —— 全部带有它们自己的 agent id 标记。服务器按 pid 对它们建立索引（它生成了主 pi，因此任何其他 pid 都是子 agent），并通过 `ppid` 把子进程链接到父进程。
 
 在 GUI 中：**Inspector → Agents** 列出该树，头部选择器会把每个标签页切换到该 agent。用 `rm -rf ~/.pi/agent/extensions/subagent ~/.pi/agent/agents ~/.pi/agent/prompts` 撤销安装。
-
-**Trace** —— 每次交互的执行日志（工具栏 → **Trace**）
-- 按对话轮次分组，包含时长、工具数、token、成本
-- 提示词、assistant 消息 + 停止原因 + 用量、带时长/状态/输出的工具调用、对话框**以及答案**、压缩、重试、队列更新、进程/stderr、扩展错误
-- 流式 `message_update` 事件位于 **deltas** 开关之后
-- 每一行都可展开为原始 JSON；持久化到 `traces/run-<ts>.jsonl`；历史下拉框、NDJSON 导出、清除
-- 每个用户气泡都有一个 **trace** 按钮，可以跳转到它对应的交互
-- 每个分组头部带有一个工具时长的**瀑布图**和一个 **touched files** 标签（`3 files`，悬停查看路径）
-- **将对话导出为 Markdown**（⌘K → *Export conversation (.md)*）
 
 ## 运行 —— 浏览器
 
@@ -503,3 +568,12 @@ node legacy/dev/make-screenshots.mjs
 - `switch_session` 只列出当前工作目录的会话。
 - 轨迹是每次服务器运行一个文件；`new session` 会添加一个标记，而不是拆分文件。
 - 会话条目是不可变且只追加的，因此 GUI 无法删除节点或改写历史 —— 只能为它加书签、从它分叉，或删除整个文件。
+
+---
+
+<div align="center">
+
+<sub><b>PiStudio</b> —— 为 <a href="https://pi.dev">pi</a> 而做。与 pi 项目无隶属关系。<br>
+<a href="INSTALL.md">安装</a> · <a href="CHANGELOG.md">更新日志</a> · <a href="LICENSE">MIT 许可</a></sub>
+
+</div>
