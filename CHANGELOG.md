@@ -15,6 +15,22 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — integrate all (merge queue)
+
+### Added
+- `GET/POST /api/tasks/:id/integrate` — merge EVERY isolated agent's changes onto
+  the current working tree in one pass (`git merge-file --diff3` per file,
+  sequentially per contributing agent). Clean changes auto-merge; conflicts across
+  all agents are aggregated into one preview; nothing is written until Apply
+  (overwritten files are backed up to `traces/integrate-<stamp>/`).
+- the tasks board: an **Integrate all** action with a single review overlay
+  (per-conflict Ours/Theirs/Both, binary whole-file source choice).
+
+> Conflicts are surfaced, never guessed — a 3-way merge can be textually clean but
+> semantically wrong.
+
+---
+
 ## 2026-10-14 — unify observed sub-agents with tasks
 
 ### Added

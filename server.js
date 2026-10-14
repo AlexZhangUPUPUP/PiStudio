@@ -34,6 +34,8 @@
  *   POST /api/tasks/:id/agents/:aid/stop    -> stop one agent in the task
  *   POST /api/tasks/:id/agents/:aid/restart -> restart one agent in the task
  *   POST /api/tasks/:id/agents/:aid/merge   -> apply resolved merge files
+ *   GET  /api/tasks/:id/integrate -> merged preview across all isolated agents
+ *   POST /api/tasks/:id/integrate -> apply an integrate-all resolution
  *   POST /api/tasks/:id/stop   -> stop every agent in the task
  *   DELETE /api/tasks/:id      -> stop and forget the task
  *   GET  /api/observed-agents  -> sub-agents observed across live sessions
@@ -2663,6 +2665,40 @@ const server = http.createServer((req, res) => {
 
     if (parts.length === 4 && parts[3] === 'promote-all' && req.method === 'POST') {
       return sendJson(res, 200, promoteAllTaskAgents(task));
+    }
+
+    if (parts.length === 4 && parts[3] === 'integrate' && req.method === 'GET') {
+      const agents = [...task.agents.values()]
+        .filter((a) => a.worktree)
+        .map((a) => ({ agentId: a.id, worktree: a.worktree.path, base: a.worktree.base }));
+      if (!agents.length) return sendJson(res, 200, { ok: false, error: 'no isolated agents' });
+      try {
+        const out = merge.integratePreview({ cwd: task.cwd, agents });
+        return sendJson(res, 200, { ok: true, ...out });
+      } catch (err) {
+        return sendJson(res, 200, { ok: false, error: String((err && err.message) || err) });
+      }
+    }
+
+    if (parts.length === 4 && parts[3] === 'integrate' && req.method === 'POST') {
+      const worktrees = {};
+      for (const a of task.agents.values()) if (a.worktree) worktrees[a.id] = a.worktree.path;
+      return readBody(req, (body) => {
+        let b = {};
+        try {
+          b = JSON.parse(body || '{}');
+        } catch {
+          return sendJson(res, 400, { error: 'invalid JSON' });
+        }
+        try {
+          const out = merge.integrateApply({ cwd: task.cwd, worktrees, files: b.files });
+          const resp = { ok: true, applied: out.applied };
+          if (out.backup) resp.backup = out.backup;
+          return sendJson(res, 200, resp);
+        } catch (err) {
+          return sendJson(res, 200, { ok: false, error: String((err && err.message) || err) });
+        }
+      });
     }
 
     if (parts.length === 4 && parts[3] === 'events') {

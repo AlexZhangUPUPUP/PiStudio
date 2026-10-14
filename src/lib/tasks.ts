@@ -123,6 +123,26 @@ export interface MergePreview {
   files?: MergeFile[]
 }
 
+export interface IntegrateFile {
+  path: string
+  status?: string
+  clean: boolean
+  content?: string
+  blocks?: MergeBlock[]
+  agents: string[]
+  pending: string[]
+  binary?: boolean
+  skipped?: boolean
+  delete?: boolean
+}
+
+export interface IntegratePreview {
+  ok: boolean
+  error?: string
+  base?: string | null
+  files?: IntegrateFile[]
+}
+
 export interface ObservedAgent {
   session: string
   key: string
@@ -361,6 +381,43 @@ export async function mergeApply(
     }
     const dd = d as { ok?: boolean; applied?: string[]; error?: string } | null
     return { ok: !!dd?.ok, applied: dd?.applied || [], error: dd?.error }
+  } catch {
+    return null
+  }
+}
+
+/** Fetch the integrate preview (conflict-resolution plan) across all agents. */
+export async function integratePreview(taskId: string): Promise<IntegratePreview | null> {
+  try {
+    const r = await fetch(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/integrate`))
+    if (!r.ok) return null
+    return (await r.json()) as IntegratePreview
+  } catch {
+    return null
+  }
+}
+
+/** Apply resolved integrate contents across all agents. */
+export async function integrateApply(
+  taskId: string,
+  files: Array<{ path: string; content?: string; delete?: boolean; takeTheirs?: boolean; agentId?: string }>,
+): Promise<{ ok: boolean; applied: string[]; backup?: string; error?: string } | null> {
+  try {
+    const r = await fetch(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/integrate`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files }),
+    })
+    const d = await r.json().catch(() => null)
+    if (!r.ok) {
+      return {
+        ok: false,
+        applied: [],
+        error: String((d as { error?: string } | null)?.error || r.status),
+      }
+    }
+    const dd = d as { ok?: boolean; applied?: string[]; backup?: string; error?: string } | null
+    return { ok: !!dd?.ok, applied: dd?.applied || [], backup: dd?.backup, error: dd?.error }
   } catch {
     return null
   }

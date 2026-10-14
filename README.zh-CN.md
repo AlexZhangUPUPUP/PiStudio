@@ -167,6 +167,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | GET | `/api/tasks/:id/agents/:aid/diff` | 隔离 agent 改动的文件 + 统一 diff |
 | GET | `/api/tasks/:id/agents/:aid/merge` | 三方合并预览（干净 `content` 或冲突 `blocks`） |
 | POST | `/api/tasks/:id/agents/:aid/merge` | 应用用户解决后的文件（覆盖前备份） |
+| GET | `/api/tasks/:id/integrate` | 合并队列预览（跨所有隔离 agent） |
+| POST | `/api/tasks/:id/integrate` | 应用整合结果（覆盖前备份） |
 | POST | `/api/tasks/:id/agents/:aid/promote` | 把该 agent 的改动应用回工作区 |
 | POST | `/api/tasks/:id/promote-all` | 一次性应用所有隔离 agent 的改动 |
 | POST | `/api/tasks/:id/cleanup` | 移除该任务的 git worktree |
@@ -189,6 +191,10 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 **合并全部** 则一次性应用所有隔离 agent 的改动（逐个报告冲突，不冲突的照样落地）。任务还可以带**预算** —— `POST /api/tasks` 的 `{ cost, tokens }` —— 当累计花费超过它时，剩余 agent 会被自动停止，任务标记为 `budgetExceeded`。
 
 **合并** 则真正解决冲突，而不只是报告：它把 agent 的 worktree 和你的工作区做三方合并（`git merge-file --diff3`），让你把每个冲突区选为 **保留当前** / **采用 agent** / **两者都要** 再应用。被覆盖的文件会先备份到 `traces/merge-<stamp>/`。二进制或超大文件则整文件二选一（**保留当前** / **采用 agent**）。
+
+**整合全部** 就是合并队列：一次把所有隔离 agent 的改动合到一起 —— 不冲突的自动合并，所有冲突**汇总到一个界面**。在你点“应用”之前不会碰工作区（被覆盖的文件备份到 `traces/integrate-<stamp>/`）。
+
+> 冲突永远不会被自动解决：三方合并可能文本上干净但语义上错（一个 agent 改了函数名，另一个还在调用旧名），所以队列只做“汇总呈现”，不替你做决定。
 
 面板还会列出**观测到的子 agent** —— 主会话里由 pi 自己的 `subagent` 扩展启动的进程 —— 显示是否还活着，可以**停止**，也可以**收编**（作为我们自己的任务 agent 重跑，获得 worktree 隔离、重试、diff、合并、预算等完整能力），和 PiStudio 自己管的 task 并列显示（`GET /api/observed-agents`）。
 

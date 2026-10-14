@@ -15,6 +15,8 @@ import {
   fmtTokens,
   getObservedAgents,
   getTask,
+  integrateApply,
+  integratePreview,
   listTasks,
   mergeApply,
   mergePreview,
@@ -29,6 +31,9 @@ import {
   usageTokens,
   type AgentDiff,
   type CreateTaskBody,
+  type IntegrateFile,
+  type IntegratePreview,
+  type MergeBlock,
   type MergeFile,
   type MergePreview,
   type ObservedAgent,
@@ -158,6 +163,7 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const [compareAgents, setCompareAgents] = useState<[TaskAgent, TaskAgent] | null>(null)
   const [diffAgent, setDiffAgent] = useState<TaskAgent | null>(null)
   const [mergeAgent, setMergeAgent] = useState<TaskAgent | null>(null)
+  const [integrateOpen, setIntegrateOpen] = useState(false)
   const [promoteAllPending, setPromoteAllPending] = useState(false)
   const [promoteAllResult, setPromoteAllResult] = useState<{ applied: number; conflicts: number } | null>(null)
   const [observed, setObserved] = useState<ObservedAgent[]>([])
@@ -219,13 +225,14 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (mergeAgent) setMergeAgent(null)
+      else if (integrateOpen) setIntegrateOpen(false)
       else if (diffAgent) setDiffAgent(null)
       else if (compareAgents) setCompareAgents(null)
       else onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose, compareAgents, diffAgent, mergeAgent])
+  }, [open, onClose, compareAgents, diffAgent, mergeAgent, integrateOpen])
 
   // Reset compare selection/overlay whenever the viewed task changes.
   useEffect(() => {
@@ -233,6 +240,7 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     setCompareAgents(null)
     setDiffAgent(null)
     setMergeAgent(null)
+    setIntegrateOpen(false)
     setPromoteAllResult(null)
   }, [task?.id])
 
@@ -552,6 +560,16 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                       <GitMerge className="size-3" /> {t('tasks.promoteAll')}
                     </Button>
                   )}
+                  {task.agents.some((a) => a.worktree) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1"
+                      onClick={() => setIntegrateOpen(true)}
+                    >
+                      <Combine className="size-3" /> {t('tasks.integrate')}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -691,6 +709,17 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
           agent={mergeAgent}
           t={t}
           onClose={() => setMergeAgent(null)}
+          onApplied={async () => {
+            const next = await getTask(task.id)
+            if (next) setTask(next)
+          }}
+        />
+      )}
+      {integrateOpen && task && (
+        <IntegrateOverlay
+          taskId={task.id}
+          t={t}
+          onClose={() => setIntegrateOpen(false)}
           onApplied={async () => {
             const next = await getTask(task.id)
             if (next) setTask(next)
@@ -1090,11 +1119,16 @@ function DiffOverlay({
 
 type MergeChoice = 'ours' | 'theirs' | 'both'
 
-/** Assemble a file's resolved content from its merge blocks and per-block choices. */
-function resolveMergeFile(file: MergeFile, choices: Record<number, MergeChoice>): string {
-  if (!file.conflict) return file.content ?? ''
+/** Assemble resolved content from merge blocks and per-block choices. */
+function resolveConflictBlocks(
+  blocks: MergeBlock[] | undefined,
+  content: string | undefined,
+  conflict: boolean,
+  choices: Record<number, MergeChoice>,
+): string {
+  if (!conflict) return content ?? ''
   const parts: string[] = []
-  ;(file.blocks || []).forEach((block, i) => {
+  ;(blocks || []).forEach((block, i) => {
     if (block.type === 'text') {
       parts.push(block.text)
       return
@@ -1105,6 +1139,84 @@ function resolveMergeFile(file: MergeFile, choices: Record<number, MergeChoice>)
     else if (choice === 'both') parts.push(block.ours + block.theirs)
   })
   return parts.join('')
+}
+
+/** Assemble a file's resolved content from its merge blocks and per-block choices. */
+function resolveMergeFile(file: MergeFile, choices: Record<number, MergeChoice>): string {
+  return resolveConflictBlocks(file.blocks, file.content, file.conflict, choices)
+}
+
+/** True when an integrate file carries conflict blocks that need resolution. */
+function integrateHasConflict(file: IntegrateFile): boolean {
+  return (file.blocks || []).some((b) => b.type === 'conflict')
+}
+
+function ConflictBlockResolver({
+  blocks,
+  choices,
+  t,
+  onChoice,
+}: {
+  blocks: MergeBlock[]
+  choices: Record<number, MergeChoice>
+  t: (k: string, vars?: Record<string, unknown>) => string
+  onChoice: (index: number, choice: MergeChoice) => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {blocks.map((block, i) =>
+        block.type === 'text' ? (
+          <pre
+            key={i}
+            className="overflow-x-auto whitespace-pre rounded border border-border bg-muted/20 p-2 font-mono text-[11px] leading-relaxed"
+          >
+            {block.text}
+          </pre>
+        ) : (
+          <div key={i} className="rounded border border-border p-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <div className="mb-1 text-[10px] font-semibold text-muted-foreground">
+                  {t('tasks.mergeOurs')}
+                </div>
+                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                  {block.ours}
+                </pre>
+              </div>
+              <div>
+                <div className="mb-1 text-[10px] font-semibold text-muted-foreground">
+                  {t('tasks.mergeTheirs')}
+                </div>
+                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                  {block.theirs}
+                </pre>
+              </div>
+            </div>
+            <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/50">
+              {block.base}
+            </pre>
+            <div className="mt-2 flex gap-1">
+              {(['ours', 'theirs', 'both'] as const).map((choice) => (
+                <Button
+                  key={choice}
+                  variant={choices[i] === choice ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7"
+                  onClick={() => onChoice(i, choice)}
+                >
+                  {choice === 'ours'
+                    ? t('tasks.mergeOurs')
+                    : choice === 'theirs'
+                      ? t('tasks.mergeTheirs')
+                      : t('tasks.mergeBoth')}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ),
+      )}
+    </div>
+  )
 }
 
 function MergeFileDetail({
@@ -1122,58 +1234,9 @@ function MergeFileDetail({
 
   return (
     <div className="flex flex-col gap-2">
-      {file.conflict &&
-        (file.blocks || []).map((block, i) =>
-          block.type === 'text' ? (
-            <pre
-              key={i}
-              className="overflow-x-auto whitespace-pre rounded border border-border bg-muted/20 p-2 font-mono text-[11px] leading-relaxed"
-            >
-              {block.text}
-            </pre>
-          ) : (
-            <div key={i} className="rounded border border-border p-2">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <div className="mb-1 text-[10px] font-semibold text-muted-foreground">
-                    {t('tasks.mergeOurs')}
-                  </div>
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
-                    {block.ours}
-                  </pre>
-                </div>
-                <div>
-                  <div className="mb-1 text-[10px] font-semibold text-muted-foreground">
-                    {t('tasks.mergeTheirs')}
-                  </div>
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
-                    {block.theirs}
-                  </pre>
-                </div>
-              </div>
-              <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/50">
-                {block.base}
-              </pre>
-              <div className="mt-2 flex gap-1">
-                {(['ours', 'theirs', 'both'] as const).map((choice) => (
-                  <Button
-                    key={choice}
-                    variant={choices[i] === choice ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7"
-                    onClick={() => onChoice(i, choice)}
-                  >
-                    {choice === 'ours'
-                      ? t('tasks.mergeOurs')
-                      : choice === 'theirs'
-                        ? t('tasks.mergeTheirs')
-                        : t('tasks.mergeBoth')}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ),
-        )}
+      {file.conflict && (
+        <ConflictBlockResolver blocks={file.blocks || []} choices={choices} t={t} onChoice={onChoice} />
+      )}
       {!file.conflict && <div className="text-[11px] text-muted-foreground">{t('tasks.mergeClean')}</div>}
       <div>
         <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-muted/20 p-2 font-mono text-[11px] leading-relaxed">
@@ -1421,6 +1484,222 @@ function MergeOverlay({
           )}
           <Button className="ml-auto h-8" disabled={pending || hasUnresolved} onClick={apply}>
             {pending ? '…' : t('tasks.mergeApply')}
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function IntegrateOverlay({
+  taskId,
+  t,
+  onClose,
+  onApplied,
+}: {
+  taskId: string
+  t: (k: string, vars?: Record<string, unknown>) => string
+  onClose: () => void
+  onApplied: () => Promise<void>
+}) {
+  const [data, setData] = useState<IntegratePreview | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [choices, setChoices] = useState<Record<string, Record<number, MergeChoice>>>({})
+  const [nonTextChoices, setNonTextChoices] = useState<Record<string, string>>({})
+  const [pending, setPending] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    integratePreview(taskId).then((d) => {
+      if (!alive) return
+      setData(d)
+      setLoading(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [taskId])
+
+  const files = data?.files || []
+
+  const setChoice = (path: string, index: number, choice: MergeChoice) => {
+    setChoices((c) => ({ ...c, [path]: { ...(c[path] || {}), [index]: choice } }))
+  }
+
+  const setNonTextChoice = (path: string, choice: string) => {
+    setNonTextChoices((c) => ({ ...c, [path]: choice }))
+  }
+
+  const hasUnresolved = files.some((f) =>
+    integrateHasConflict(f)
+      ? (f.blocks || []).some((b, i) => b.type === 'conflict' && !(choices[f.path] || {})[i])
+      : false,
+  )
+
+  const apply = async () => {
+    if (pending || hasUnresolved) return
+    setPending(true)
+    setResult(null)
+    try {
+      const payload: Array<{
+        path: string
+        content?: string
+        delete?: boolean
+        takeTheirs?: boolean
+        agentId?: string
+      }> = []
+      for (const f of files) {
+        if (f.delete) {
+          payload.push({ path: f.path, delete: true })
+        } else if (f.binary || f.skipped) {
+          const choice = nonTextChoices[f.path] || 'ours'
+          if (choice !== 'ours') payload.push({ path: f.path, takeTheirs: true, agentId: choice })
+        } else if (integrateHasConflict(f)) {
+          payload.push({
+            path: f.path,
+            content: resolveConflictBlocks(f.blocks, f.content, true, choices[f.path] || {}),
+          })
+        } else {
+          payload.push({ path: f.path, content: f.content ?? '' })
+        }
+      }
+      const res = await integrateApply(taskId, payload)
+      if (res) {
+        if (res.ok) {
+          setResult({ ok: true, text: t('tasks.integrateApplied', { n: res.applied.length }) })
+          await onApplied()
+        } else {
+          setResult({ ok: false, text: res.error || t('tasks.failed') })
+        }
+      } else {
+        setResult({ ok: false, text: t('tasks.failed') })
+      }
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('tasks.integrateTitle')}
+        className="flex max-h-[88vh] w-[min(1000px,96vw)] animate-fade-in flex-col overflow-hidden rounded-lg border border-border bg-popover text-foreground shadow-xl"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">{t('tasks.integrateTitle')}</h2>
+            {data?.base && (
+              <p className="truncate font-mono text-[11px] text-muted-foreground">{data.base}</p>
+            )}
+          </div>
+          <Button variant="ghost" size="icon" className="size-7" onClick={onClose} aria-label={t('common.close')}>
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {loading ? (
+            <div className="py-8 text-center text-[12px] text-muted-foreground">…</div>
+          ) : data?.error ? (
+            <div className="text-[12px] text-destructive">{data.error}</div>
+          ) : !data ? (
+            <div className="py-8 text-center text-[12px] text-destructive">{t('tasks.failed')}</div>
+          ) : files.length === 0 ? (
+            <div className="py-8 text-center text-[12px] text-muted-foreground">{t('tasks.integrateNone')}</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {files.map((f) => {
+                const conflict = integrateHasConflict(f)
+                return (
+                  <div key={f.path} className="rounded-md border border-border p-2">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 truncate font-mono text-[12px]">{f.path}</span>
+                      {f.status && <span className="shrink-0 text-[10px] text-muted-foreground">{f.status}</span>}
+                      <span
+                        className={cn(
+                          'ml-auto shrink-0 rounded-full border px-1.5 py-px text-[10px]',
+                          conflict || f.delete
+                            ? 'border-destructive/40 text-destructive'
+                            : 'border-border text-muted-foreground',
+                        )}
+                      >
+                        {f.delete
+                          ? t('common.delete')
+                          : f.binary || f.skipped
+                            ? t('tasks.nonText')
+                            : conflict
+                              ? t('tasks.mergeConflict')
+                              : t('tasks.integrateAuto')}
+                      </span>
+                    </div>
+
+                    {conflict && (
+                      <div className="mt-2">
+                        <ConflictBlockResolver
+                          blocks={f.blocks || []}
+                          choices={choices[f.path] || {}}
+                          t={t}
+                          onChoice={(index, choice) => setChoice(f.path, index, choice)}
+                        />
+                        {(f.pending || []).length > 0 && (
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            {t('tasks.integratePending', { n: (f.pending || []).length })}
+                          </div>
+                        )}
+                        <div className="mt-2">
+                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-muted/20 p-2 font-mono text-[11px] leading-relaxed">
+                            {resolveConflictBlocks(f.blocks, f.content, true, choices[f.path] || {}) || ' '}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+
+                    {(f.binary || f.skipped) && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <Button
+                          variant={(nonTextChoices[f.path] || 'ours') === 'ours' ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7"
+                          onClick={() => setNonTextChoice(f.path, 'ours')}
+                        >
+                          {t('tasks.keepOurs')}
+                        </Button>
+                        {(f.agents || []).map((id) => (
+                          <Button
+                            key={id}
+                            variant={nonTextChoices[f.path] === id ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-7"
+                            onClick={() => setNonTextChoice(f.path, id)}
+                          >
+                            {id}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+          {result && (
+            <span className={cn('text-[12px]', result.ok ? 'text-teal' : 'text-destructive')}>{result.text}</span>
+          )}
+          <Button className="ml-auto h-8" disabled={pending || hasUnresolved} onClick={apply}>
+            {pending ? '…' : t('tasks.integrateApply')}
           </Button>
         </div>
       </div>

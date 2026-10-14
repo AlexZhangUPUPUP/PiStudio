@@ -84,6 +84,13 @@ window.PI_I18N = {
     'tasks.sourceTask': 'task',
     'tasks.sourceObserved': 'observed',
     'tasks.exited': 'exited',
+    'tasks.integrate': 'Integrate all',
+    'tasks.integrateTitle': 'Integrate all agents',
+    'tasks.integrateApply': 'Apply',
+    'tasks.integrateApplied': 'Integrated {n} file(s)',
+    'tasks.integrateNone': 'No agent changes to integrate',
+    'tasks.integrateAuto': 'auto',
+    'tasks.integratePending': '{n} agent(s) not merged (conflict)',
 
     // usage / spend
     'usage.title': 'Usage & spend',
@@ -674,6 +681,13 @@ window.PI_I18N = {
     'tasks.sourceTask': '任务',
     'tasks.sourceObserved': '观测',
     'tasks.exited': '已退出',
+    'tasks.integrate': '整合全部',
+    'tasks.integrateTitle': '整合所有 agent',
+    'tasks.integrateApply': '应用',
+    'tasks.integrateApplied': '已整合 {n} 个文件',
+    'tasks.integrateNone': '没有可整合的 agent 改动',
+    'tasks.integrateAuto': '自动',
+    'tasks.integratePending': '{n} 个 agent 因冲突未合入',
 
     // usage / spend
     'usage.title': '用量与花费',

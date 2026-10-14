@@ -190,6 +190,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | GET | `/api/tasks/:id/agents/:aid/diff` | an isolated agent's changed files + unified diff |
 | GET | `/api/tasks/:id/agents/:aid/merge` | 3-way merge preview (clean `content` or conflict `blocks`) |
 | POST | `/api/tasks/:id/agents/:aid/merge` | apply user-resolved files (backs up overwritten ones) |
+| GET | `/api/tasks/:id/integrate` | merge-queue preview across all isolated agents |
+| POST | `/api/tasks/:id/integrate` | apply the integrated result (backs up overwritten files) |
 | POST | `/api/tasks/:id/agents/:aid/promote` | apply that agent's changes to the working tree |
 | POST | `/api/tasks/:id/promote-all` | apply every isolated agent's changes at once |
 | POST | `/api/tasks/:id/cleanup` | remove the task's git worktrees |
@@ -229,6 +231,15 @@ crosses it the remaining agents are stopped automatically and the task is marked
 lets you resolve each conflict region as **Ours** / **Theirs** / **Both** before
 applying. Anything the merge overwrites is backed up under `traces/merge-<stamp>/`.
 Binary or oversized files are merged whole instead (**Keep ours** / **Use agent's**).
+
+**Integrate all** is the merge queue: it combines *every* isolated agent in one
+pass — non-conflicting changes auto-merge, and all conflicts across all agents are
+aggregated into a single review. Nothing touches your working tree until you hit
+Apply (and overwritten files are backed up under `traces/integrate-<stamp>/`).
+
+> Conflicts are never resolved automatically: a 3-way merge can be textually clean
+yet semantically wrong (one agent renames a function another still calls), so the
+queue surfaces them instead of guessing.
 
 The board also lists **observed sub-agents** — processes spawned by pi's own
 `subagent` extension in the main session. Each shows whether it is still alive,
