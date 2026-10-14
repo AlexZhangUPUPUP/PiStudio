@@ -141,8 +141,9 @@ inventory
 
 ![context dock view](dev/shot-context.png)
 
-Regenerate them with `node legacy/dev/make-screenshots.mjs` (these shots show the
-legacy UI; see Testing).
+Regenerate them with `node dev/make-screenshots.mjs` — a self-contained run that
+starts a throwaway server plus headless Chrome, drives the real React UI, and
+captures every image below (see Testing).
 
 ## Multiple tabs
 
@@ -693,6 +694,7 @@ pistudio/
   CHANGELOG.md            what changed when, plus architecture notes
   .github/workflows/ci.yml  typecheck + build (node 20/22) and the smoke test
   dev/react-smoke.mjs     React UI end-to-end smoke test (own server + Chrome; `npm test`)
+  dev/make-screenshots.mjs regenerates dev/shot-*.png from the React UI
   dev/package.mjs         builds the macOS .app / .dmg (@electron/packager + hdiutil)
   dev/dialogs-demo.ts     extension exercising every dialog/UI method (/dialogtest)
   dev/shot-*.png          screenshots (referenced by this README)
@@ -739,7 +741,7 @@ node legacy/dev/cdp-test.mjs          # 250 checks
 node legacy/dev/i18n-check.mjs        # i18n key coverage (en/zh)
 node legacy/dev/multi-tab-test.mjs    # two clients on one session
 node legacy/dev/css-audit.mjs         # measured UI audit (scale, contrast, nesting)
-node legacy/dev/make-screenshots.mjs  # wrote dev/shot-*.png
+node legacy/dev/make-screenshots.mjs  # legacy screenshots (superseded by dev/make-screenshots.mjs)
 ```
 
 Covers (legacy): connection, theme + style tokens (soft default and the neobrutalist
@@ -763,10 +765,11 @@ Two browser instances on the same session (legacy):
 node legacy/dev/multi-tab-test.mjs
 ```
 
-Regenerate README screenshots (legacy, needs the vanilla UI restored):
+Regenerate the README screenshots from the React UI (self-contained — starts its
+own server and headless Chrome, then writes every `dev/shot-*.png`):
 
 ```bash
-node legacy/dev/make-screenshots.mjs
+node dev/make-screenshots.mjs
 ```
 
 Then type `/dialogtest` in the GUI to try the dialogs by hand. That extension is

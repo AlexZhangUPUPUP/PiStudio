@@ -129,7 +129,7 @@ browser / Electron ──SSE  /api/events──▶  Node server ──stdout JSO
 
 ![context dock view](dev/shot-context.png)
 
-使用 `node legacy/dev/make-screenshots.mjs` 重新生成这些截图（这些截图展示的是旧版 UI；参见 Testing）。
+使用 `node dev/make-screenshots.mjs` 重新生成这些截图 —— 它会自包含地启动一个临时服务器和无头 Chrome，驱动真实的 React UI，并抓取下面每一张图（参见测试）。
 
 ## 多标签页
 
@@ -504,6 +504,7 @@ pistudio/
   CHANGELOG.md            what changed when, plus architecture notes
   .github/workflows/ci.yml  typecheck + build (node 20/22) and the smoke test
   dev/react-smoke.mjs     React UI end-to-end smoke test (own server + Chrome; `npm test`)
+  dev/make-screenshots.mjs regenerates dev/shot-*.png from the React UI
   dev/package.mjs         builds the macOS .app / .dmg (@electron/packager + hdiutil)
   dev/dialogs-demo.ts     extension exercising every dialog/UI method (/dialogtest)
   dev/shot-*.png          screenshots (referenced by this README)
@@ -538,7 +539,7 @@ node legacy/dev/cdp-test.mjs          # 250 checks
 node legacy/dev/i18n-check.mjs        # i18n key coverage (en/zh)
 node legacy/dev/multi-tab-test.mjs    # two clients on one session
 node legacy/dev/css-audit.mjs         # measured UI audit (scale, contrast, nesting)
-node legacy/dev/make-screenshots.mjs  # wrote dev/shot-*.png
+node legacy/dev/make-screenshots.mjs  # 旧版截图（已被 dev/make-screenshots.mjs 取代）
 ```
 
 覆盖（旧版）：连接、主题 + 样式 token（柔和默认和 neobrutalist 变体）、中英文切换与持久化、`@`/`/` 补全、命令面板、对话框焦点陷阱、会话树键盘导航、实时运行状态和流式光标、工具 diff 渲染 / 复制按钮 / 输出折叠、整条回答复制、人类可读的成本格式、跨真实刷新的草稿持久化、输入历史、滚动到最新、消息分页、诊断面板、编辑并重发（分支 + 预填）、图片附件、全部四种对话框 + 即发即忘方法、一次真实的流式提示词、会话树、会话过滤器、书签往返、已保存会话列表、完整轨迹流水线、服务器不可达恢复、陈旧对话框修剪，以及多客户端消息/对话框处理。
@@ -551,10 +552,10 @@ node legacy/dev/make-screenshots.mjs  # wrote dev/shot-*.png
 node legacy/dev/multi-tab-test.mjs
 ```
 
-重新生成 README 截图（旧版，需要恢复 vanilla UI）：
+从 React UI 重新生成 README 截图（自包含 —— 会自己启动服务器和无头 Chrome，然后写出每个 `dev/shot-*.png`）：
 
 ```bash
-node legacy/dev/make-screenshots.mjs
+node dev/make-screenshots.mjs
 ```
 
 然后在 GUI 中输入 `/dialogtest` 手动试用这些对话框。该扩展默认**不会**加载 —— 它只为此而存在，因此在正常使用中永远不会弹出对话框。

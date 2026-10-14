@@ -24,6 +24,11 @@ local days the work happened rather than tagged releases. Newest first.
 - **`INSTALL.md`** — install from npm, from source, the macOS app bundle, plus
   update/uninstall and troubleshooting.
 - **`LICENSE`** (MIT) and `docs/reddit-draft.md` (launch copy, not posted).
+- **`dev/make-screenshots.mjs`** — regenerates `dev/shot-*.png` from the **React**
+  UI (throwaway server + headless Chrome, driven through the DOM and the
+  `pi-gui:*` events). The old `legacy/dev/make-screenshots.mjs` only drove the
+  retired vanilla frontend, so every README screenshot was the old UI; all 24
+  are regenerated now.
 - **npm publishing metadata**: `bin` (installs `pistudio` and the `pigui` alias),
   a `files` allowlist, `engines`, `repository`/`homepage`/`bugs`, `keywords`,
   `publishConfig` and a `prepublishOnly` frontend build.
