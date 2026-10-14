@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
+  BarChart3,
   Bot,
   Languages,
   Moon,
@@ -24,6 +25,7 @@ import SessionsModal from '@/components/panels/SessionsModal'
 import CommandPalette from '@/components/palette/CommandPalette'
 import SettingsModal from '@/components/SettingsModal'
 import TasksModal from '@/components/tasks/TasksModal'
+import UsageModal from '@/components/UsageModal'
 import ExtensionDialogs from '@/components/dialogs/ExtensionDialogs'
 import Toasts from '@/components/Toasts'
 import { usePi } from '@/store/pi'
@@ -61,6 +63,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [tasksOpen, setTasksOpen] = useState(false)
+  const [usageOpen, setUsageOpen] = useState(false)
   const [extensionsOpen, setExtensionsOpen] = useState(false)
   const [changesCount, setChangesCount] = useState(0)
   const [themeMode, setThemeMode] = useState(getTheme)
@@ -111,6 +114,7 @@ export default function App() {
       'pi-gui:open-sessions': onSessions,
       'pi-gui:open-settings': onSettings,
       'pi-gui:open-tasks': () => setTasksOpen(true),
+      'pi-gui:open-usage': () => setUsageOpen(true),
       'pi-gui:open-extensions': () => setExtensionsOpen(true),
       'pi-gui:open-trace': () => onDock('trace'),
       'pi-gui:open-changes': () => onDock('changes'),
@@ -283,6 +287,15 @@ export default function App() {
               variant="ghost"
               size="icon"
               className="size-8"
+              onClick={() => setUsageOpen(true)}
+              title={t('usage.title')}
+            >
+              <BarChart3 className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
               onClick={() => setSessionsOpen(true)}
               title={t('common.sessions')}
             >
@@ -439,6 +452,7 @@ export default function App() {
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <TasksModal open={tasksOpen} onClose={() => setTasksOpen(false)} />
+      <UsageModal open={usageOpen} onClose={() => setUsageOpen(false)} />
       <ExtensionsModal open={extensionsOpen} onClose={() => setExtensionsOpen(false)} />
       <ExtensionDialogs />
       <Toasts />

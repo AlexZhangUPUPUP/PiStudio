@@ -492,6 +492,17 @@ async function main() {
   await escape()
   await sleep(600)
 
+  /* ------------------------------------------------------------- usage ---- */
+  await attempt('usage', async () => {
+    await escape()
+    await open('pi-gui:open-usage')
+    await waitFor(`!!document.querySelector('[aria-label="Usage & spend"]')`, 'usage modal', 8000)
+    await sleep(1400)
+    await shot('shot-usage.png')
+  })
+  await escape()
+  await sleep(400)
+
   /* ------------------------------------------------------------- 中文 UI - */
   await attempt('zh', async () => {
     await closeDock()

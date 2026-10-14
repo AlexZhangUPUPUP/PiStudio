@@ -204,6 +204,31 @@ finished agent is badged.
 > **Inspector → Agents** view, which merely observes pi's own `subagent`
 > example extension — see **Sub-agents**.
 
+## Usage & spend
+
+PiStudio keeps a **zero-dependency SQLite index** (Node's built-in `node:sqlite`)
+of every session it has seen — metadata plus the full transcript, in an FTS5
+table. JSONL stays the source of truth; the index is derived and can be deleted
+or rebuilt at any time.
+
+The index powers:
+
+- **fast global search** (`/api/search`) across every session and workspace,
+  including message bodies — no more grepping files on each keystroke
+- the **Usage & spend** dashboard (toolbar **Usage**, or ⌘K → *Usage & spend*):
+  cost, tokens and turns per day, per model and per workspace
+
+![usage dashboard — cost per day, by model and by workspace](dev/shot-usage.png?v=2)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/index/status` | `{ available, db, sessions, runs, tasks }` |
+| GET | `/api/usage?days=30` | totals + daily series + by-model + by-workspace |
+| POST | `/api/index/rebuild` | drop and rescan the index |
+
+Disable it with `--no-index` (or `PI_GUI_NO_INDEX=1`); everything then falls back
+to reading the JSONL files directly. The database lives at `~/.pistudio/index.db`.
+
 ## Languages
 
 The UI ships in English and Chinese. The toolbar `中 / EN` button switches
@@ -719,6 +744,7 @@ stats/usage and diagnostics. The original vanilla frontend is archived under
 ```
 pistudio/
   server.js               Node server: one pi process per tab, SSE, traces, sessions
+  db.js                   zero-dependency SQLite index (node:sqlite): sessions + FTS, usage
   src/                    React + TypeScript frontend (Vite)
   index.html              Vite entry for the React UI
   vite.config.mts         dev proxy (/api → server), builds to dist/

@@ -42,6 +42,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const { StringDecoder } = require('string_decoder');
+const { openIndex } = require('./db');
 
 // ---------------------------------------------------------------- options
 
@@ -88,8 +89,23 @@ const IS_LOOPBACK = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::
 const TOKEN = opt('token', process.env.PI_GUI_TOKEN || '');
 /** Binding beyond loopback exposes a shell-capable agent, so require a token. */
 const AUTH_TOKEN = TOKEN || (IS_LOOPBACK ? '' : require('crypto').randomBytes(16).toString('hex'));
+const NO_INDEX = argv.includes('--no-index') || process.env.PI_GUI_NO_INDEX === '1';
+const INDEX_DB = path.resolve(opt('index-db', path.join(require('os').homedir(), '.pistudio', 'index.db')));
 
 fs.mkdirSync(TRACE_DIR, { recursive: true });
+
+/* ------------------------------------------------------------ usage index */
+
+const indexLog = (msg) => process.stderr.write(msg + '\n');
+const index = NO_INDEX
+  ? openIndex({ dbFile: null, log: indexLog })
+  : openIndex({ dbFile: INDEX_DB, log: indexLog, cwd: CWD });
+
+if (index.available) {
+  indexLog(`[pistudio] index: ${INDEX_DB} (${index.status().sessions} sessions)`);
+} else {
+  indexLog(`[pistudio] index: disabled (${index.reason || 'unavailable'})`);
+}
 
 // ------------------------------------------------------------ file index
 
@@ -679,7 +695,8 @@ function deriveTitle(text, fallback) {
 /** Turns / tool calls / tokens / cost need the whole file — 33 MB of transcripts
  *  parse in ~85 ms, and the mtime:size cache makes it a one-off per change. */
 function scanSessionUsage(file, stat) {
-  const out = { turns: 0, toolCalls: 0, tokens: 0, cost: 0, firstUser: null, partial: false };
+  const out = { turns: 0, toolCalls: 0, tokens: 0, tokensIn: 0, tokensOut: 0, cost: 0, firstUser: null, partial: false, model: null };
+  const modelTurns = new Map();
   const MAX = 8 * 1024 * 1024;
   let text = '';
   try {
@@ -707,13 +724,26 @@ function scanSessionUsage(file, stat) {
     if (m.role === 'user' && !out.firstUser) out.firstUser = previewContent(m.content, 400);
     if (m.role !== 'assistant') continue;
     out.turns += 1;
+    const model = m.model || m.responseModel || null;
+    if (model) modelTurns.set(model, (modelTurns.get(model) || 0) + 1);
     const u = m.usage;
     if (u) {
       out.tokens += u.totalTokens || 0;
+      out.tokensIn += u.input || 0;
+      out.tokensOut += u.output || 0;
       out.cost += (u.cost && u.cost.total) || 0;
     }
     if (Array.isArray(m.content)) for (const c of m.content) if (c && c.type === 'toolCall') out.toolCalls += 1;
   }
+  let bestModel = null;
+  let best = -1;
+  for (const [model, n] of modelTurns) {
+    if (n > best) {
+      best = n;
+      bestModel = model;
+    }
+  }
+  out.model = bestModel;
   return out;
 }
 
@@ -765,6 +795,9 @@ function readSessionSummary(file) {
     turns: usage.turns,
     toolCalls: usage.toolCalls,
     tokens: usage.tokens,
+    tokensIn: usage.tokensIn,
+    tokensOut: usage.tokensOut,
+    model: usage.model,
     cost: usage.cost,
     counted: !usage.partial,
     entries,
@@ -1505,6 +1538,10 @@ function refreshTaskStatus(task) {
   const stopped = agents.some((a) => a.status === 'stopped');
   task.status = bad ? 'failed' : stopped ? 'stopped' : 'done';
   task.endedAt = task.endedAt || Date.now();
+  // A finished task is worth indexing (usage/cost) exactly once it settles.
+  try {
+    index.upsertTasks([taskInfo(task)]);
+  } catch {}
 }
 
 function createTask(opts) {
@@ -2000,7 +2037,23 @@ const server = http.createServer((req, res) => {
   if (p === '/api/search') {
     const q = url.searchParams.get('q') || '';
     const limit = Math.min(40, Math.max(1, Number(url.searchParams.get('limit') || 12)));
+    if (index.available) return sendJson(res, 200, index.search(q, limit));
     return sendJson(res, 200, searchSessions(q, limit));
+  }
+
+  if (p === '/api/index/status') {
+    return sendJson(res, 200, index.status());
+  }
+
+  if (p === '/api/index/rebuild' && req.method === 'POST') {
+    index.rebuild();
+    if (index.available) setImmediate(scanIndex);
+    return sendJson(res, 200, { ok: true, status: index.status() });
+  }
+
+  if (p === '/api/usage') {
+    const days = Math.min(365, Math.max(1, Number(url.searchParams.get('days') || 30)));
+    return sendJson(res, 200, index.usage({ days }));
   }
 
   if (p === '/api/changes') {
@@ -2199,6 +2252,61 @@ const reaper = setInterval(() => {
   }
 }, 60_000);
 reaper.unref?.();
+
+/* ------------------------------------------------------------ usage index
+ * The SQLite index is derived from saved session JSONL (the source of truth).
+ * It is rebuilt incrementally: an async scan on boot, then every 5 minutes,
+ * skipping files whose stored mtime/size have not changed. */
+
+let indexScanning = false;
+
+function scanIndex() {
+  if (!index.available || indexScanning) return;
+  indexScanning = true;
+  try {
+    const known = index.meta();
+    const all = listSessions({ scope: 'all', limit: 5000 });
+    const rows = [];
+    for (const s of all.sessions) {
+      const mtime = Math.round(Number(s.mtime) || 0);
+      const size = Math.round(Number(s.size) || 0);
+      const prev = known.get(s.path);
+      if (prev && prev.mtime === mtime && prev.size === size) continue;
+      let body = '';
+      try {
+        // index the full transcript so search covers message bodies, not just titles
+        body = fs.readFileSync(s.path, 'utf8').slice(0, 1_500_000);
+      } catch {}
+      rows.push({
+        session_file: s.path,
+        workspace: s.workspace || s.cwd || null,
+        label: s.workspaceLabel || null,
+        title: s.title || null,
+        preview: s.preview || null,
+        model: s.model || null,
+        turns: Number(s.turns) || 0,
+        cost: Number(s.cost) || 0,
+        tokens_in: Number(s.tokensIn) || 0,
+        tokens_out: Number(s.tokensOut) || 0,
+        updated_at: mtime,
+        size,
+        mtime,
+        body,
+      });
+    }
+    if (rows.length) index.upsertSessions(rows);
+  } catch (err) {
+    process.stderr.write(`[pistudio] index scan error: ${(err && err.message) || err}\n`);
+  } finally {
+    indexScanning = false;
+  }
+}
+
+if (index.available) {
+  setImmediate(scanIndex);
+  const scanTimer = setInterval(scanIndex, 5 * 60 * 1000);
+  scanTimer.unref?.();
+}
 
 server.listen(PORT, HOST, () => {
   const addr = server.address();

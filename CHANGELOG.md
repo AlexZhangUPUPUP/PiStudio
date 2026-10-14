@@ -15,6 +15,25 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — SQLite index + usage dashboard
+
+### Added
+- **zero-dependency SQLite index** (`db.js`, Node's built-in `node:sqlite`): an
+  FTS5 index over every session's metadata **and full transcript**, with a no-op
+  fallback when `node:sqlite` is missing (Node <22.5) or `--no-index` is set.
+  JSONL stays the source of truth; the DB (`~/.pistudio/index.db`) is derived and
+  rebuildable.
+- **`/api/search` now uses the index** when available (full-transcript FTS5 with
+  snippets), falling back to the old file grep. Same response shape.
+- **Usage & spend dashboard** (toolbar + ⌘K): cost, tokens and turns per day, per
+  model and per workspace — `GET /api/usage`, `GET /api/index/status`,
+  `POST /api/index/rebuild`.
+- **agent tasks are persisted** to the index when they finish, so races survive a
+  restart.
+- `shot-usage.png` + a **Usage & spend** README section (en/zh).
+
+---
+
 ## 2026-10-14 — agent task runtime (orchestration groundwork)
 
 ### Added

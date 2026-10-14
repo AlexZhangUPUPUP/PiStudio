@@ -175,6 +175,25 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 
 > task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
 
+## 用量与花费
+
+PiStudio 用 **Node 自带的 `node:sqlite`** 建了一个**零依赖 SQLite 索引**：记录它见过的每个会话的元数据 + 完整 transcript（FTS5 表）。JSONL 仍是唯一事实来源，索引是派生的，随时可删可重建。
+
+索引支撑：
+
+- **全局快速搜索**（`/api/search`）—— 覆盖所有工作区的会话，连消息正文都能搜，不用每次按键都去 grep 文件
+- **用量与花费**面板（工具栏 **Usage**，或 ⌘K → *用量与花费*）：按天、按模型、按工作区的成本 / Token / 轮次
+
+![用量面板 —— 每天成本，按模型、按工作区](dev/shot-usage.png?v=2)
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/api/index/status` | `{ available, db, sessions, runs, tasks }` |
+| GET | `/api/usage?days=30` | 总量 + 每日序列 + 按模型 + 按工作区 |
+| POST | `/api/index/rebuild` | 清空并重新扫描索引 |
+
+用 `--no-index`（或 `PI_GUI_NO_INDEX=1`）关闭，所有功能退回直接读 JSONL 文件。数据库在 `~/.pistudio/index.db`。
+
 ## 语言
 
 UI 内置英文和中文。工具栏的 `中 / EN` 按钮可以即时切换：状态栏、轨迹面板、会话树、过滤器、对话框和通知都会原位重新渲染——无需刷新页面。该选择保存在 `localStorage`（`pi-gui-lang`）中；首次访问时它会跟随 `navigator.language`。
@@ -520,6 +539,7 @@ npm run build                     # emits dist/, which server.js then serves
 ```
 pistudio/
   server.js               Node server: one pi process per tab, SSE, traces, sessions
+  db.js                   zero-dependency SQLite index (node:sqlite): sessions + FTS, usage
   src/                    React + TypeScript frontend (Vite)
   index.html              Vite entry for the React UI
   vite.config.mts         dev proxy (/api → server), builds to dist/
