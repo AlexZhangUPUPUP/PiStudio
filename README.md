@@ -193,6 +193,7 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | POST | `/api/tasks/:id/agents/:aid/promote` | apply that agent's changes to the working tree |
 | POST | `/api/tasks/:id/promote-all` | apply every isolated agent's changes at once |
 | POST | `/api/tasks/:id/cleanup` | remove the task's git worktrees |
+| GET | `/api/observed-agents` | pi's own sub-agent processes (read-only) |
 | POST | `/api/tasks/:id/stop` | stop every agent in the task |
 | DELETE | `/api/tasks/:id` | stop and forget the task |
 
@@ -225,6 +226,11 @@ crosses it the remaining agents are stopped automatically and the task is marked
 (`git merge-file --diff3`) of the agent's worktree against your working tree and
 lets you resolve each conflict region as **Ours** / **Theirs** / **Both** before
 applying. Anything the merge overwrites is backed up under `traces/merge-<stamp>/`.
+Binary or oversized files are merged whole instead (**Keep ours** / **Use agent's**).
+
+The board also lists **observed sub-agents** — processes spawned by pi's own
+`subagent` extension in the main session — read-only, next to the tasks
+PiStudio owns (`GET /api/observed-agents`).
 
 > Tasks are spawned by PiStudio itself. That is different from the
 > **Inspector → Agents** view, which merely observes pi's own `subagent`
@@ -243,7 +249,9 @@ The index powers:
   including message bodies — no more grepping files on each keystroke
 - the **Usage & spend** dashboard (toolbar **Usage**, or ⌘K → *Usage & spend*):
   cost, tokens and turns per day, per model and per workspace, with ↑/↓ deltas
-  against the previous period and a list of recent runs (`GET /api/runs`)
+  against the previous period and a list of recent runs (`GET /api/runs`), plus
+  global **daily / monthly budgets** (`GET/POST /api/budgets`) with an over-budget
+  badge
 
 ![usage dashboard — cost per day, by model and by workspace](dev/shot-usage.png?v=2)
 
@@ -252,6 +260,7 @@ The index powers:
 | GET | `/api/index/status` | `{ available, db, sessions, runs, tasks }` |
 | GET | `/api/usage?days=30` | totals (+ `prev`) + daily series + by-model + by-workspace |
 | GET | `/api/runs?limit=20` | indexed `traces/run-*.jsonl` history |
+| GET/POST | `/api/budgets` | global daily/monthly caps + today/month spend |
 | POST | `/api/index/rebuild` | drop and rescan the index |
 
 Disable it with `--no-index` (or `PI_GUI_NO_INDEX=1`); everything then falls back

@@ -145,6 +145,9 @@ function noopAdapter(reason) {
     runMeta: () => new Map(),
     upsertRuns: () => 0,
     runs: () => [],
+    getKV: () => null,
+    setKV: () => {},
+    spendSince: () => ({ cost: 0, tokens: 0 }),
     rebuild: () => {},
     close: () => {},
   };
@@ -266,6 +269,12 @@ function openIndex({ dbFile, log, cwd } = {}) {
       ),
       usageTasks: db.prepare(
         'SELECT t.id AS task_id, t.created_at, t.ended_at, ta.model, ta.turns, ta.tokens, ta.cost FROM task_agents ta JOIN tasks t ON t.id = ta.task_id',
+      ),
+      spendSessions: db.prepare(
+        'SELECT COALESCE(SUM(cost), 0) AS cost, COALESCE(SUM(tokens_in + tokens_out), 0) AS tokens FROM sessions WHERE updated_at >= ?',
+      ),
+      spendTasks: db.prepare(
+        'SELECT COALESCE(SUM(ta.cost), 0) AS cost, COALESCE(SUM(ta.tokens), 0) AS tokens FROM task_agents ta JOIN tasks t ON t.id = ta.task_id WHERE t.created_at >= ?',
       ),
     };
     // One-off migration: FTS used to index only title+preview. Clear the index so
@@ -468,6 +477,42 @@ function openIndex({ dbFile, log, cwd } = {}) {
         logFn(`[pistudio] index: status error: ${(err && err.message) || err}`);
         return { available: false, db: dbFile, sessions: 0, runs: 0, tasks: 0, updatedAt: 0 };
       }
+    },
+
+    /** Persisted key/value store (global budgets, index bookkeeping, …). */
+    getKV(key) {
+      try {
+        const row = stmts.kvGet.get(String(key));
+        return row && row.value != null ? String(row.value) : null;
+      } catch (err) {
+        logFn(`[pistudio] index: getKV error: ${(err && err.message) || err}`);
+        return null;
+      }
+    },
+
+    setKV(key, value) {
+      try {
+        stmts.kvSet.run(String(key), value == null ? null : String(value));
+        return true;
+      } catch (err) {
+        logFn(`[pistudio] index: setKV error: ${(err && err.message) || err}`);
+        return false;
+      }
+    },
+
+    /** Sum session + task-agent spend since `ts` (ms epoch). */
+    spendSince(ts) {
+      const since = Number(ts) || 0;
+      const out = { cost: 0, tokens: 0 };
+      try {
+        const s = stmts.spendSessions.get(since);
+        const t = stmts.spendTasks.get(since);
+        out.cost = (Number(s && s.cost) || 0) + (Number(t && t.cost) || 0);
+        out.tokens = (Number(s && s.tokens) || 0) + (Number(t && t.tokens) || 0);
+      } catch (err) {
+        logFn(`[pistudio] index: spendSince error: ${(err && err.message) || err}`);
+      }
+      return out;
     },
 
     /** Stored {mtime,size} per session file — lets the scanner skip unchanged files. */

@@ -6,9 +6,14 @@ import { usePi } from '@/store/pi'
 import { cn } from '@/lib/utils'
 import { fmtCost, fmtTokens } from '@/lib/tasks'
 import {
+  getBudgets,
   getIndexStatus,
   getRuns,
   getUsage,
+  setBudgets,
+  type BudgetLimit,
+  type BudgetPatch,
+  type BudgetStatus,
   type IndexStatus,
   type RunRecord,
   type UsageRange,
@@ -36,6 +41,38 @@ const RANGES: Array<{ value: UsageRange; labelKey: string }> = [
   { value: 90, labelKey: 'usage.range90' },
 ]
 
+interface BudgetForm {
+  dailyCost: string
+  dailyTokens: string
+  monthlyCost: string
+  monthlyTokens: string
+}
+
+const EMPTY_BUDGET_FORM: BudgetForm = {
+  dailyCost: '',
+  dailyTokens: '',
+  monthlyCost: '',
+  monthlyTokens: '',
+}
+
+const BUDGET_INPUT_CLS =
+  'h-8 w-full rounded-md border border-border bg-popover px-2 text-[12px] text-foreground outline-none placeholder:text-muted-foreground focus:border-teal'
+
+function budgetFormFrom(status: BudgetStatus): BudgetForm {
+  return {
+    dailyCost: String(status.config.daily.cost ?? ''),
+    dailyTokens: String(status.config.daily.tokens ?? ''),
+    monthlyCost: String(status.config.monthly.cost ?? ''),
+    monthlyTokens: String(status.config.monthly.tokens ?? ''),
+  }
+}
+
+function parseBudgetNum(v: string, integer = false): number {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return integer ? Math.round(n) : n
+}
+
 /**
  * Usage / spend dashboard.
  *
@@ -49,6 +86,9 @@ export default function UsageModal({ open, onClose }: UsageModalProps) {
   const [data, setData] = useState<UsageResponse | null>(null)
   const [status, setStatus] = useState<IndexStatus | null>(null)
   const [runs, setRuns] = useState<RunRecord[]>([])
+  const [budgets, setBudgetStatus] = useState<BudgetStatus | null>(null)
+  const [budgetForm, setBudgetForm] = useState<BudgetForm>(EMPTY_BUDGET_FORM)
+  const [budgetSaved, setBudgetSaved] = useState(false)
 
   // Re-fetch whenever the modal opens or the range changes.
   useEffect(() => {
@@ -69,6 +109,21 @@ export default function UsageModal({ open, onClose }: UsageModalProps) {
       cancelled = true
     }
   }, [open, range])
+
+  // Fetch budgets once per open (independent of the chart range).
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void (async () => {
+      const b = await getBudgets()
+      if (cancelled) return
+      setBudgetStatus(b)
+      if (b) setBudgetForm(budgetFormFrom(b))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -92,6 +147,26 @@ export default function UsageModal({ open, onClose }: UsageModalProps) {
   const workspaceRows: BucketRow[] = (data?.byWorkspace || [])
     .map((b) => ({ key: b.key, label: b.label || b.key, cost: b.cost, tokens: b.tokens, turns: b.turns, count: b.count }))
     .sort((a, b) => b.cost - a.cost)
+
+  const handleSaveBudget = async () => {
+    const patch: BudgetPatch = {
+      daily: {
+        cost: parseBudgetNum(budgetForm.dailyCost),
+        tokens: parseBudgetNum(budgetForm.dailyTokens, true),
+      },
+      monthly: {
+        cost: parseBudgetNum(budgetForm.monthlyCost),
+        tokens: parseBudgetNum(budgetForm.monthlyTokens, true),
+      },
+    }
+    const updated = await setBudgets(patch)
+    if (updated) {
+      setBudgetStatus(updated)
+      setBudgetForm(budgetFormFrom(updated))
+    }
+    setBudgetSaved(true)
+    window.setTimeout(() => setBudgetSaved(false), 2000)
+  }
 
   return createPortal(
     <div
@@ -162,6 +237,99 @@ export default function UsageModal({ open, onClose }: UsageModalProps) {
               <div>
                 <h3 className="mb-1.5 text-xs font-semibold text-muted-foreground">{t('usage.daily')}</h3>
                 <DailyChart series={data.series} />
+              </div>
+
+              {/* budgets */}
+              <div>
+                <h3 className="mb-1.5 text-xs font-semibold text-muted-foreground">{t('usage.budgets')}</h3>
+                {budgets && !budgets.available ? (
+                  <div className="rounded-md border border-border bg-muted/40 py-4 text-center text-sm text-muted-foreground">
+                    {t('usage.indexOff')}
+                  </div>
+                ) : (
+                  <div className="space-y-3 rounded-md border border-border bg-muted/40 p-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>
+                        <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                          {t('usage.budgetDaily')}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step="any"
+                            value={budgetForm.dailyCost}
+                            onChange={(e) => setBudgetForm((f) => ({ ...f, dailyCost: e.target.value }))}
+                            placeholder={t('usage.budgetCost')}
+                            className={BUDGET_INPUT_CLS}
+                          />
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            step={1}
+                            value={budgetForm.dailyTokens}
+                            onChange={(e) => setBudgetForm((f) => ({ ...f, dailyTokens: e.target.value }))}
+                            placeholder={t('usage.budgetTokens')}
+                            className={BUDGET_INPUT_CLS}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                          {t('usage.budgetMonthly')}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step="any"
+                            value={budgetForm.monthlyCost}
+                            onChange={(e) => setBudgetForm((f) => ({ ...f, monthlyCost: e.target.value }))}
+                            placeholder={t('usage.budgetCost')}
+                            className={BUDGET_INPUT_CLS}
+                          />
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            step={1}
+                            value={budgetForm.monthlyTokens}
+                            onChange={(e) => setBudgetForm((f) => ({ ...f, monthlyTokens: e.target.value }))}
+                            placeholder={t('usage.budgetTokens')}
+                            className={BUDGET_INPUT_CLS}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={handleSaveBudget}>
+                        {t('usage.budgetSave')}
+                      </Button>
+                      {budgetSaved && (
+                        <span className="text-[11px] font-medium text-teal">{t('usage.budgetSaved')}</span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <BudgetSpend
+                        label={t('usage.today')}
+                        spend={budgets?.today}
+                        cap={budgets?.config.daily}
+                        exceeded={budgets?.exceeded.daily}
+                      />
+                      <BudgetSpend
+                        label={t('usage.thisMonth')}
+                        spend={budgets?.month}
+                        cap={budgets?.config.monthly}
+                        exceeded={budgets?.exceeded.monthly}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* breakdowns */}
@@ -261,6 +429,43 @@ function Stat({
       <div className="mt-0.5 flex items-baseline gap-1.5">
         <span className={cn('text-sm font-semibold', accent && 'text-teal')}>{value}</span>
         {delta}
+      </div>
+    </div>
+  )
+}
+
+/** Today / this-month spend vs the configured cap, with an over-budget badge. */
+function BudgetSpend({
+  label,
+  spend,
+  cap,
+  exceeded,
+}: {
+  label: string
+  spend?: BudgetLimit
+  cap?: BudgetLimit
+  exceeded?: boolean
+}) {
+  const { t } = usePi()
+  return (
+    <div className="rounded-md border border-border bg-popover/60 px-2 py-1.5">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[11px] font-medium">{label}</span>
+        {exceeded && (
+          <span className="rounded-sm bg-destructive/15 px-1 py-0.5 text-[10px] font-medium text-destructive">
+            {t('usage.budgetExceeded')}
+          </span>
+        )}
+      </div>
+      <div className="mt-0.5 text-[11px] text-muted-foreground">
+        <span className={cn(exceeded && 'text-destructive')}>{fmtCost(spend?.cost || 0)}</span>
+        <span className="mx-0.5 text-border">/</span>
+        {fmtCost(cap?.cost || 0)}
+      </div>
+      <div className="text-[11px] text-muted-foreground">
+        <span className={cn(exceeded && 'text-destructive')}>{fmtTokens(spend?.tokens || 0)}</span>
+        <span className="mx-0.5 text-border">/</span>
+        {fmtTokens(cap?.tokens || 0)}
       </div>
     </div>
   )

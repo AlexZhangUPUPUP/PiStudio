@@ -15,6 +15,20 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — global budgets, binary merge, observed sub-agents
+
+### Added
+- **global daily/monthly budgets** (advisory): `GET/POST /api/budgets` persists
+  caps in the index; the Usage dashboard shows Today / This month vs cap with an
+  over-budget badge.
+- the merge panel now handles **binary / skipped files** with a whole-file
+  Keep ours / Use agent's choice (`POST .../merge` accepts `{ path, takeTheirs }`).
+- `GET /api/observed-agents` + an **Observed sub-agents** list in the tasks board,
+  surfacing pi's own `subagent` extension processes (read-only) next to the tasks
+  PiStudio owns.
+
+---
+
 ## 2026-10-14 — conflict merge panel
 
 ### Added

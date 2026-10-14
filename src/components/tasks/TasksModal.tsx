@@ -12,6 +12,7 @@ import {
   fmtCost,
   fmtElapsed,
   fmtTokens,
+  getObservedAgents,
   getTask,
   listTasks,
   mergeApply,
@@ -28,6 +29,7 @@ import {
   type CreateTaskBody,
   type MergeFile,
   type MergePreview,
+  type ObservedAgent,
   type PromoteResult,
   type TaskAgent,
   type TaskInfo,
@@ -156,15 +158,28 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const [mergeAgent, setMergeAgent] = useState<TaskAgent | null>(null)
   const [promoteAllPending, setPromoteAllPending] = useState(false)
   const [promoteAllResult, setPromoteAllResult] = useState<{ applied: number; conflicts: number } | null>(null)
+  const [observed, setObserved] = useState<ObservedAgent[]>([])
   const nextKey = useRef(3)
 
   const refreshRecent = useCallback(async () => {
     setRecent(await listTasks())
   }, [])
 
+  const refreshObserved = useCallback(async () => {
+    setObserved(await getObservedAgents())
+  }, [])
+
   useEffect(() => {
     if (open) refreshRecent()
   }, [open, refreshRecent])
+
+  // Poll observed sub-agents while the modal is open.
+  useEffect(() => {
+    if (!open) return
+    refreshObserved()
+    const iv = setInterval(refreshObserved, 3000)
+    return () => clearInterval(iv)
+  }, [open, refreshObserved])
 
   // Poll the selected task while the modal is open — the server keeps each
   // agent's streamed text, so this is what makes the columns look live.
@@ -423,6 +438,36 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
               ))}
             </div>
           )}
+
+          {/* observed sub-agents */}
+          <div className="border-b border-border px-4 py-3">
+            <div className="mb-1.5 flex items-baseline gap-2">
+              <h3 className="text-[12px] font-semibold">{t('tasks.observed')}</h3>
+              <span className="text-[11px] text-muted-foreground">{t('tasks.observedHint')}</span>
+            </div>
+            {observed.length === 0 ? (
+              <div className="text-[11px] text-muted-foreground">{t('tasks.observedNone')}</div>
+            ) : (
+              <div className="overflow-hidden rounded-md border border-border">
+                {observed.map((o, i) => (
+                  <div
+                    key={o.session + ':' + o.key + ':' + o.pid + ':' + i}
+                    className="flex items-center gap-2 border-b border-border/60 px-2 py-1 text-[11px] last:border-b-0"
+                  >
+                    <span className="shrink-0 font-medium">{o.key}</span>
+                    {o.model && <span className="truncate font-mono text-muted-foreground">{o.model}</span>}
+                    {o.pid != null && <span className="shrink-0 font-mono text-muted-foreground">pid {o.pid}</span>}
+                    <span
+                      className="ml-auto min-w-0 truncate font-mono text-muted-foreground"
+                      title={o.task || undefined}
+                    >
+                      {o.task || ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {!task && (
             <div className="px-4 py-10 text-center text-[13px] text-muted-foreground">{t('tasks.empty')}</div>
@@ -1093,6 +1138,47 @@ function MergeFileDetail({
   )
 }
 
+function NonTextMergeChoice({
+  file,
+  choice,
+  t,
+  onChoice,
+}: {
+  file: MergeFile
+  choice: 'ours' | 'theirs'
+  t: (k: string, vars?: Record<string, unknown>) => string
+  onChoice: (choice: 'ours' | 'theirs') => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 truncate font-mono text-[12px]">{file.path}</span>
+        <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+          {t('tasks.nonText')}
+        </span>
+      </div>
+      <div className="flex gap-1">
+        <Button
+          variant={choice === 'ours' ? 'default' : 'outline'}
+          size="sm"
+          className="h-7"
+          onClick={() => onChoice('ours')}
+        >
+          {t('tasks.keepOurs')}
+        </Button>
+        <Button
+          variant={choice === 'theirs' ? 'default' : 'outline'}
+          size="sm"
+          className="h-7"
+          onClick={() => onChoice('theirs')}
+        >
+          {t('tasks.takeTheirs')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function MergeOverlay({
   taskId,
   agent,
@@ -1109,6 +1195,7 @@ function MergeOverlay({
   const [data, setData] = useState<MergePreview | null>(null)
   const [loading, setLoading] = useState(true)
   const [choices, setChoices] = useState<Record<string, Record<number, MergeChoice>>>({})
+  const [nonTextChoices, setNonTextChoices] = useState<Record<string, 'ours' | 'theirs'>>({})
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
@@ -1142,6 +1229,10 @@ function MergeOverlay({
     setChoices((c) => ({ ...c, [path]: { ...(c[path] || {}), [index]: choice } }))
   }
 
+  const setNonTextChoice = (path: string, choice: 'ours' | 'theirs') => {
+    setNonTextChoices((c) => ({ ...c, [path]: choice }))
+  }
+
   const hasUnresolved = conflictFiles.some((f) =>
     (f.blocks || []).some((b, i) => b.type === 'conflict' && !(choices[f.path] || {})[i]),
   )
@@ -1153,12 +1244,20 @@ function MergeOverlay({
     setPending(true)
     setResult(null)
     try {
-      const payload = files
-        .filter((f) => !f.binary && !f.skipped)
-        .map((f) => ({
-          path: f.path,
-          content: f.conflict ? resolveMergeFile(f, choices[f.path] || {}) : (f.content ?? ''),
-        }))
+      const payload: { path: string; content?: string; takeTheirs?: boolean }[] = [
+        ...files
+          .filter((f) => !f.binary && !f.skipped)
+          .map((f) => ({
+            path: f.path,
+            content: f.conflict ? resolveMergeFile(f, choices[f.path] || {}) : (f.content ?? ''),
+          })),
+        ...files
+          .filter((f) => f.binary || f.skipped)
+          .map((f) => ({
+            path: f.path,
+            takeTheirs: (nonTextChoices[f.path] || 'ours') === 'theirs',
+          })),
+      ]
       const res = await mergeApply(taskId, agent.id, payload)
       if (res) {
         if (res.ok) {
@@ -1235,19 +1334,32 @@ function MergeOverlay({
                             : 'border-border text-muted-foreground',
                         )}
                       >
-                        {f.conflict ? t('tasks.mergeConflict') : t('tasks.mergeClean')}
+                        {f.binary || f.skipped
+                          ? t('tasks.nonText')
+                          : f.conflict
+                            ? t('tasks.mergeConflict')
+                            : t('tasks.mergeClean')}
                       </span>
                     </button>
                   ))}
                 </div>
                 <div className="min-w-0 flex-1">
                   {selectedFile ? (
-                    <MergeFileDetail
-                      file={selectedFile}
-                      choices={choices[selectedFile.path] || {}}
-                      t={t}
-                      onChoice={(index, choice) => setChoice(selectedFile.path, index, choice)}
-                    />
+                    selectedFile.binary || selectedFile.skipped ? (
+                      <NonTextMergeChoice
+                        file={selectedFile}
+                        choice={nonTextChoices[selectedFile.path] || 'ours'}
+                        t={t}
+                        onChoice={(choice) => setNonTextChoice(selectedFile.path, choice)}
+                      />
+                    ) : (
+                      <MergeFileDetail
+                        file={selectedFile}
+                        choices={choices[selectedFile.path] || {}}
+                        t={t}
+                        onChoice={(index, choice) => setChoice(selectedFile.path, index, choice)}
+                      />
+                    )
                   ) : (
                     <div className="py-8 text-center text-[12px] text-muted-foreground">…</div>
                   )}

@@ -33,8 +33,10 @@
  *   POST /api/tasks/:id/agents/:aid/command -> RPC command to one agent
  *   POST /api/tasks/:id/agents/:aid/stop    -> stop one agent in the task
  *   POST /api/tasks/:id/agents/:aid/restart -> restart one agent in the task
+ *   POST /api/tasks/:id/agents/:aid/merge   -> apply resolved merge files
  *   POST /api/tasks/:id/stop   -> stop every agent in the task
  *   DELETE /api/tasks/:id      -> stop and forget the task
+ *   GET  /api/observed-agents  -> sub-agents observed across live sessions
  *
  * Usage:
  *   node server.js [--port 4173] [--host 127.0.0.1] [--cwd DIR] [--pi /path/to/pi] [-- <pi args>]
@@ -110,6 +112,93 @@ if (index.available) {
   indexLog(`[pistudio] index: ${INDEX_DB} (${index.status().sessions} sessions)`);
 } else {
   indexLog(`[pistudio] index: disabled (${index.reason || 'unavailable'})`);
+}
+
+/* ------------------------------------------------------ global budgets */
+
+/** Global daily/monthly budgets are advisory: they are reported, never enforced. */
+function budgetZero() {
+  return { cost: 0, tokens: 0 };
+}
+
+function defaultBudgetConfig() {
+  return { daily: budgetZero(), monthly: budgetZero() };
+}
+
+/** Read + normalise the persisted budget config; malformed values become 0. */
+function readBudgetConfig() {
+  const cfg = defaultBudgetConfig();
+  try {
+    const raw = index.getKV('budgets');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        for (const key of ['daily', 'monthly']) {
+          const src = parsed[key];
+          if (src && typeof src === 'object') {
+            cfg[key].cost = Number(src.cost) || 0;
+            cfg[key].tokens = Number(src.tokens) || 0;
+          }
+        }
+      }
+    }
+  } catch {}
+  return cfg;
+}
+
+/** Merge a POST body into the config; absent fields keep the current value. */
+function mergeBudgetConfig(cfg, body) {
+  if (!body || typeof body !== 'object') return cfg;
+  for (const key of ['daily', 'monthly']) {
+    const src = body[key];
+    if (!src || typeof src !== 'object') continue;
+    if ('cost' in src) cfg[key].cost = Number(src.cost) || 0;
+    if ('tokens' in src) cfg[key].tokens = Number(src.tokens) || 0;
+  }
+  return cfg;
+}
+
+function startOfLocalDay() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function startOfLocalMonth() {
+  const d = new Date();
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** FROZEN /api/budgets response contract. */
+function budgetResponse() {
+  const zero = budgetZero();
+  if (!index.available) {
+    return {
+      available: false,
+      config: { daily: { ...zero }, monthly: { ...zero } },
+      today: { ...zero },
+      month: { ...zero },
+      exceeded: { daily: false, monthly: false },
+    };
+  }
+  const config = readBudgetConfig();
+  let today = { ...zero };
+  let month = { ...zero };
+  try {
+    today = index.spendSince(startOfLocalDay());
+    month = index.spendSince(startOfLocalMonth());
+  } catch {}
+  const exceeded = {
+    daily:
+      (config.daily.cost > 0 && today.cost > config.daily.cost) ||
+      (config.daily.tokens > 0 && today.tokens > config.daily.tokens),
+    monthly:
+      (config.monthly.cost > 0 && month.cost > config.monthly.cost) ||
+      (config.monthly.tokens > 0 && month.tokens > config.monthly.tokens),
+  };
+  return { available: true, config, today, month, exceeded };
 }
 
 // ------------------------------------------------------------ file index
@@ -2236,6 +2325,36 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, { session: cid, agents: sess ? [...sess.agents.values()] : [] });
   }
 
+  if (p === '/api/observed-agents') {
+    const agents = [];
+    for (const [sid, sess] of sessions) {
+      const main = sess.agents.get('main');
+      const mainPid = main && main.pid ? main.pid : sess.child ? sess.child.pid : null;
+      for (const a of sess.agents.values()) {
+        if (a.key === 'main') continue;
+        let ppid = null;
+        if (a.parentKey === 'main') ppid = mainPid;
+        else {
+          const m = /^pid:(\d+)$/.exec(a.parentKey || '');
+          if (m) ppid = Number(m[1]);
+        }
+        agents.push({
+          session: sid,
+          key: a.key,
+          pid: a.pid,
+          ppid,
+          model: a.model,
+          task: a.task,
+          startedAt: a.startedAt,
+          lastAt: a.lastAt,
+          count: a.count,
+        });
+      }
+    }
+    agents.sort((x, y) => (y.lastAt || 0) - (x.lastAt || 0));
+    return sendJson(res, 200, { agents });
+  }
+
   if (p === '/api/files') {
     const q = url.searchParams.get('q') || '';
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 60)));
@@ -2313,6 +2432,30 @@ const server = http.createServer((req, res) => {
   if (p === '/api/usage') {
     const days = Math.min(365, Math.max(1, Number(url.searchParams.get('days') || 30)));
     return sendJson(res, 200, index.usage({ days }));
+  }
+
+  if (p === '/api/budgets' && req.method === 'GET') {
+    return sendJson(res, 200, budgetResponse());
+  }
+
+  if (p === '/api/budgets' && req.method === 'POST') {
+    return readBody(req, (body) => {
+      let b = {};
+      try {
+        b = JSON.parse(body || '{}');
+      } catch {
+        return sendJson(res, 400, { error: 'invalid JSON' });
+      }
+      if (!index.available) return sendJson(res, 200, budgetResponse());
+      let config = readBudgetConfig();
+      try {
+        config = mergeBudgetConfig(config, b);
+        index.setKV('budgets', JSON.stringify(config));
+      } catch (err) {
+        return sendJson(res, 500, { error: String((err && err.message) || err) });
+      }
+      return sendJson(res, 200, budgetResponse());
+    });
   }
 
   if (p === '/api/runs') {
@@ -2554,7 +2697,7 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'invalid JSON' });
         }
         try {
-          const out = merge.mergeApply({ cwd: task.cwd, files: b.files });
+          const out = merge.mergeApply({ cwd: task.cwd, worktree: agent.worktree.path, files: b.files });
           const resp = { ok: true, applied: out.applied };
           if (out.backup) resp.backup = out.backup;
           return sendJson(res, 200, resp);

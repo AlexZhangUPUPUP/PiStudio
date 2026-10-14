@@ -170,6 +170,7 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | POST | `/api/tasks/:id/agents/:aid/promote` | 把该 agent 的改动应用回工作区 |
 | POST | `/api/tasks/:id/promote-all` | 一次性应用所有隔离 agent 的改动 |
 | POST | `/api/tasks/:id/cleanup` | 移除该任务的 git worktree |
+| GET | `/api/observed-agents` | pi 自己的子 agent 进程（只读） |
 | POST | `/api/tasks/:id/stop` | 停止任务中的所有 agent |
 | DELETE | `/api/tasks/:id` | 停止并移除任务 |
 
@@ -185,7 +186,9 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 
 **合并全部** 则一次性应用所有隔离 agent 的改动（逐个报告冲突，不冲突的照样落地）。任务还可以带**预算** —— `POST /api/tasks` 的 `{ cost, tokens }` —— 当累计花费超过它时，剩余 agent 会被自动停止，任务标记为 `budgetExceeded`。
 
-**合并** 则真正解决冲突，而不只是报告：它把 agent 的 worktree 和你的工作区做三方合并（`git merge-file --diff3`），让你把每个冲突区选为 **保留当前** / **采用 agent** / **两者都要** 再应用。被覆盖的文件会先备份到 `traces/merge-<stamp>/`。
+**合并** 则真正解决冲突，而不只是报告：它把 agent 的 worktree 和你的工作区做三方合并（`git merge-file --diff3`），让你把每个冲突区选为 **保留当前** / **采用 agent** / **两者都要** 再应用。被覆盖的文件会先备份到 `traces/merge-<stamp>/`。二进制或超大文件则整文件二选一（**保留当前** / **采用 agent**）。
+
+面板还会列出**观测到的子 agent** —— 主会话里由 pi 自己的 `subagent` 扩展启动的进程 —— 只读，和 PiStudio 自己管的 task 并列显示（`GET /api/observed-agents`）。
 
 > task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
 
@@ -196,7 +199,7 @@ PiStudio 用 **Node 自带的 `node:sqlite`** 建了一个**零依赖 SQLite 索
 索引支撑：
 
 - **全局快速搜索**（`/api/search`）—— 覆盖所有工作区的会话，连消息正文都能搜，不用每次按键都去 grep 文件
-- **用量与花费**面板（工具栏 **Usage**，或 ⌘K → *用量与花费*）：按天、按模型、按工作区的成本 / Token / 轮次，带对比上一周期的 ↑/↓ 变化，并列出最近的运行（`GET /api/runs`）
+- **用量与花费**面板（工具栏 **Usage**，或 ⌘K → *用量与花费*）：按天、按模型、按工作区的成本 / Token / 轮次，带对比上一周期的 ↑/↓ 变化，并列出最近的运行（`GET /api/runs`）；还有全局的**每日 / 每月预算**（`GET/POST /api/budgets`）和超支徽章
 
 ![用量面板 —— 每天成本，按模型、按工作区](dev/shot-usage.png?v=2)
 
@@ -205,6 +208,7 @@ PiStudio 用 **Node 自带的 `node:sqlite`** 建了一个**零依赖 SQLite 索
 | GET | `/api/index/status` | `{ available, db, sessions, runs, tasks }` |
 | GET | `/api/usage?days=30` | 总量（含 `prev`）+ 每日序列 + 按模型 + 按工作区 |
 | GET | `/api/runs?limit=20` | 已索引的 `traces/run-*.jsonl` 历史 |
+| GET/POST | `/api/budgets` | 全局每日/每月上限 + 今天/本月花费 |
 | POST | `/api/index/rebuild` | 清空并重新扫描索引 |
 
 用 `--no-index`（或 `PI_GUI_NO_INDEX=1`）关闭，所有功能退回直接读 JSONL 文件。数据库在 `~/.pistudio/index.db`。

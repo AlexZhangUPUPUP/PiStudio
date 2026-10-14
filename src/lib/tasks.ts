@@ -123,6 +123,18 @@ export interface MergePreview {
   files?: MergeFile[]
 }
 
+export interface ObservedAgent {
+  session: string
+  key: string
+  pid: number | null
+  ppid: number | null
+  model: string | null
+  task: string | null
+  startedAt: number | null
+  lastAt: number | null
+  count: number
+}
+
 async function jget<T>(path: string): Promise<T | null> {
   try {
     const r = await fetch(apiUrl(path))
@@ -141,6 +153,12 @@ export async function listTasks(): Promise<TaskInfo[]> {
 export async function getTask(id: string): Promise<TaskInfo | null> {
   const d = await jget<{ task: TaskInfo }>(`/api/tasks/${encodeURIComponent(id)}`)
   return d?.task || null
+}
+
+/** Fetch sub-agents spawned by pi's subagent extension (observed, read-only). */
+export async function getObservedAgents(): Promise<ObservedAgent[]> {
+  const d = await jget<{ agents: ObservedAgent[] }>('/api/observed-agents')
+  return d?.agents || []
 }
 
 export async function createTask(body: CreateTaskBody): Promise<TaskInfo | { error: string }> {
@@ -291,7 +309,7 @@ export async function mergePreview(taskId: string, agentId: string): Promise<Mer
 export async function mergeApply(
   taskId: string,
   agentId: string,
-  files: { path: string; content: string }[],
+  files: { path: string; content?: string; takeTheirs?: boolean }[],
 ): Promise<{ ok: boolean; applied: string[]; error?: string } | null> {
   try {
     const r = await fetch(

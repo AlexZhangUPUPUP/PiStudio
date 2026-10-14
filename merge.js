@@ -9,8 +9,11 @@
  * agent's worktree ("theirs"), returning a parseable block list for every
  * conflicted file.
  *
- * mergeApply({ cwd, files }) writes resolved contents back into the main
- * working tree, backing up any overwritten file to traces/merge-<stamp>/<path>.
+ * mergeApply({ cwd, worktree, files }) writes resolved contents back into the
+ * main working tree, backing up any overwritten file to
+ * traces/merge-<stamp>/<path>. Text entries (`{ path, content }`) are written
+ * as UTF-8; binary/skipped entries (`{ path, takeTheirs: true }`) copy raw
+ * bytes from the agent's worktree.
  *
  * Pure helpers — no project imports, only node's child_process/fs/path/os.
  */
@@ -291,8 +294,9 @@ function guardedTarget(root, abs) {
  * traces/merge-<stamp>/<path>. Returns { applied, backup } where `backup` is
  * the backup directory (or null when nothing needed backing up).
  */
-function mergeApply({ cwd, files }) {
+function mergeApply({ cwd, worktree, files }) {
   const root = path.resolve(cwd);
+  const wt = worktree ? path.resolve(worktree) : null;
   const list = Array.isArray(files) ? files : [];
   const stamp = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
   const backupDir = path.join(root, 'traces', 'merge-' + stamp);
@@ -305,6 +309,28 @@ function mergeApply({ cwd, files }) {
     if (!abs) continue;
     const target = guardedTarget(root, abs);
     if (!target) continue;
+
+    // Binary / previously-skipped files: copy raw bytes from the worktree.
+    if (f.takeTheirs) {
+      if (!wt) continue;
+      const src = safeResolve(wt, f.path);
+      if (!src) continue;
+      try {
+        if (fs.existsSync(target)) {
+          const dest = path.join(backupDir, f.path);
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          fs.copyFileSync(target, dest);
+          madeBackup = true;
+        }
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(src, target);
+        applied.push(f.path);
+      } catch {
+        /* skip this file on any failure */
+      }
+      continue;
+    }
+
     const content = f.content == null ? '' : String(f.content);
     try {
       if (fs.existsSync(target)) {

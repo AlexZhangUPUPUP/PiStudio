@@ -76,11 +76,48 @@ export interface RunRecord {
   model: string | null
 }
 
+export interface BudgetLimit {
+  cost: number
+  tokens: number
+}
+
+export interface BudgetConfig {
+  daily: BudgetLimit
+  monthly: BudgetLimit
+}
+
+export interface BudgetStatus {
+  available: boolean
+  config: BudgetConfig
+  today: BudgetLimit
+  month: BudgetLimit
+  exceeded: { daily: boolean; monthly: boolean }
+}
+
+export type BudgetPatch = {
+  daily?: { cost?: number; tokens?: number }
+  monthly?: { cost?: number; tokens?: number }
+}
+
 export type UsageRange = 7 | 30 | 90
 
 async function jget<T>(path: string): Promise<T | null> {
   try {
     const r = await fetch(apiUrl(path))
+    if (!r.ok) return null
+    return (await r.json()) as T
+  } catch {
+    return null
+  }
+}
+
+async function jpost<T>(path: string, body: unknown): Promise<T | null> {
+  try {
+    const r = await fetch(apiUrl(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
     if (!r.ok) return null
     return (await r.json()) as T
   } catch {
@@ -99,4 +136,12 @@ export async function getRuns(limit = 20): Promise<RunRecord[]> {
 
 export function getIndexStatus(): Promise<IndexStatus | null> {
   return jget<IndexStatus>('/api/index/status')
+}
+
+export function getBudgets(): Promise<BudgetStatus | null> {
+  return jget<BudgetStatus>('/api/budgets')
+}
+
+export function setBudgets(patch: BudgetPatch): Promise<BudgetStatus | null> {
+  return jpost<BudgetStatus>('/api/budgets', patch)
 }
