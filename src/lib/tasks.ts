@@ -55,6 +55,9 @@ export interface TaskInfo {
   endedAt: number | null
   clientCount: number
   seq: number
+  budget: { cost: number; tokens: number } | null
+  spend: { cost: number; tokens: number }
+  budgetExceeded: boolean
   agents: TaskAgent[]
 }
 
@@ -70,6 +73,7 @@ export interface AgentSpec {
 export interface CreateTaskBody {
   label?: string
   cwd?: string
+  budget?: { cost?: number; tokens?: number }
   agents: AgentSpec[]
 }
 
@@ -198,6 +202,23 @@ export async function agentDiff(taskId: string, agentId: string): Promise<AgentD
     )
     if (!r.ok) return null
     return (await r.json()) as AgentDiff
+  } catch {
+    return null
+  }
+}
+
+/** Promote (merge back) all agents' isolated worktrees in one pass. */
+export async function promoteAll(
+  taskId: string,
+): Promise<{ ok: boolean; applied: string[]; conflicts: string[] } | null> {
+  try {
+    const r = await fetch(apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/promote-all`), { method: 'POST' })
+    if (!r.ok) return null
+    const d = (await r.json().catch(() => null)) as
+      | { ok?: boolean; applied?: string[]; conflicts?: string[] }
+      | null
+    if (!d) return null
+    return { ok: !!d.ok, applied: d.applied || [], conflicts: d.conflicts || [] }
   } catch {
     return null
   }

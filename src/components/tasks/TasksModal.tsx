@@ -15,6 +15,7 @@ import {
   getTask,
   listTasks,
   promoteAgent,
+  promoteAll,
   restartAgent,
   sendAgentCommand,
   stopAgent,
@@ -22,6 +23,7 @@ import {
   usageCost,
   usageTokens,
   type AgentDiff,
+  type CreateTaskBody,
   type PromoteResult,
   type TaskAgent,
   type TaskInfo,
@@ -138,6 +140,8 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     { key: 2, name: 'agent 2', model: '' },
   ])
   const [prompt, setPrompt] = useState('')
+  const [budgetCost, setBudgetCost] = useState('')
+  const [budgetTokens, setBudgetTokens] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [task, setTask] = useState<TaskInfo | null>(null)
@@ -145,6 +149,8 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const [selected, setSelected] = useState<string[]>([])
   const [compareAgents, setCompareAgents] = useState<[TaskAgent, TaskAgent] | null>(null)
   const [diffAgent, setDiffAgent] = useState<TaskAgent | null>(null)
+  const [promoteAllPending, setPromoteAllPending] = useState(false)
+  const [promoteAllResult, setPromoteAllResult] = useState<{ applied: number; conflicts: number } | null>(null)
   const nextKey = useRef(3)
 
   const refreshRecent = useCallback(async () => {
@@ -189,6 +195,7 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     setSelected([])
     setCompareAgents(null)
     setDiffAgent(null)
+    setPromoteAllResult(null)
   }, [task?.id])
 
   const addRow = () => {
@@ -212,12 +219,22 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
       setError(t('tasks.needAgent'))
       return
     }
-    const res = await createTask({ agents })
+    const body: CreateTaskBody = { agents }
+    const cost = Number(budgetCost)
+    const tokens = Number(budgetTokens)
+    if (cost > 0 || tokens > 0) {
+      body.budget = {}
+      if (cost > 0) body.budget.cost = cost
+      if (tokens > 0) body.budget.tokens = tokens
+    }
+    const res = await createTask(body)
     setBusy(false)
     if ('error' in res) {
       setError(res.error)
       return
     }
+    setBudgetCost('')
+    setBudgetTokens('')
     setTask(res)
     refreshRecent()
   }
@@ -253,6 +270,20 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   }
 
   const openDiff = (agent: TaskAgent) => setDiffAgent(agent)
+
+  const promoteAllNow = async () => {
+    if (!task) return
+    setPromoteAllPending(true)
+    setPromoteAllResult(null)
+    try {
+      const res = await promoteAll(task.id)
+      if (res) setPromoteAllResult({ applied: res.applied.length, conflicts: res.conflicts.length })
+      const next = await getTask(task.id)
+      if (next) setTask(next)
+    } finally {
+      setPromoteAllPending(false)
+    }
+  }
 
   const promoteNow = async (aid: string): Promise<PromoteResult | null> => {
     if (!task) return null
@@ -343,6 +374,22 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
               <Button variant="outline" size="sm" className="h-8 gap-1" onClick={addRow}>
                 <Plus className="size-3.5" /> {t('tasks.addAgent')}
               </Button>
+              <Input
+                type="number"
+                value={budgetCost}
+                onChange={(e) => setBudgetCost(e.target.value)}
+                placeholder={t('tasks.budgetCost')}
+                min={0}
+                className="h-8 w-24 text-[12px]"
+              />
+              <Input
+                type="number"
+                value={budgetTokens}
+                onChange={(e) => setBudgetTokens(e.target.value)}
+                placeholder={t('tasks.budgetTokens')}
+                min={0}
+                className="h-8 w-28 text-[12px]"
+              />
               <Button size="sm" className="h-8 gap-1" onClick={launch} disabled={busy}>
                 <Play className="size-3.5" /> {busy ? t('tasks.launching') : t('tasks.launch')}
               </Button>
@@ -396,6 +443,17 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                       <Square className="size-3" /> {t('tasks.stop')}
                     </Button>
                   )}
+                  {task.agents.some((a) => a.worktree) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1"
+                      disabled={promoteAllPending}
+                      onClick={promoteAllNow}
+                    >
+                      <GitMerge className="size-3" /> {t('tasks.promoteAll')}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -407,6 +465,29 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                   </Button>
                 </div>
               </div>
+
+              {(task.budget || task.budgetExceeded || promoteAllResult) && (
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  {task.budget && (
+                    <span>
+                      {t('tasks.spend')}:{' '}
+                      <span className="font-mono">
+                        {fmtCost(task.spend.cost)} / {fmtCost(task.budget.cost)} · {fmtTokens(task.spend.tokens)} / {fmtTokens(task.budget.tokens)}
+                      </span>
+                    </span>
+                  )}
+                  {task.budgetExceeded && (
+                    <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-px text-[10px] font-medium text-destructive">
+                      {t('tasks.budgetExceeded')}
+                    </span>
+                  )}
+                  {promoteAllResult && (
+                    <span className={promoteAllResult.conflicts > 0 ? 'text-destructive' : 'text-teal'}>
+                      {t('tasks.promoteAllDone', { applied: promoteAllResult.applied, conflicts: promoteAllResult.conflicts })}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {agents.length > 0 && !agents.some((a) => a.worktree) && (
                 <div className="mb-2 text-[11px] text-muted-foreground">{t('tasks.notIsolated')}</div>

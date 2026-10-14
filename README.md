@@ -189,6 +189,7 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | POST | `/api/tasks/:id/agents/:aid/command` | send an RPC command to one agent (`{ "message": "…" }` is a prompt shorthand) |
 | GET | `/api/tasks/:id/agents/:aid/diff` | an isolated agent's changed files + unified diff |
 | POST | `/api/tasks/:id/agents/:aid/promote` | apply that agent's changes to the working tree |
+| POST | `/api/tasks/:id/promote-all` | apply every isolated agent's changes at once |
 | POST | `/api/tasks/:id/cleanup` | remove the task's git worktrees |
 | POST | `/api/tasks/:id/stop` | stop every agent in the task |
 | DELETE | `/api/tasks/:id` | stop and forget the task |
@@ -211,6 +212,12 @@ worktree** (branch `pistudio/<task>/<agent>`), so parallel agents cannot clobber
 each other's files. **Diff** shows exactly what one agent changed, and
 **Promote** applies it back into your working tree (`git apply --3way`, reporting
 conflicts). Pass `isolate: false` to `POST /api/tasks` to opt out.
+
+**Promote all** applies every isolated agent's changes at once (conflicts are
+reported per agent; the non-conflicting ones still land). A task can also carry a
+**budget** — `{ cost, tokens }` on `POST /api/tasks` — and when the summed spend
+crosses it the remaining agents are stopped automatically and the task is marked
+`budgetExceeded`.
 
 > Tasks are spawned by PiStudio itself. That is different from the
 > **Inspector → Agents** view, which merely observes pi's own `subagent`

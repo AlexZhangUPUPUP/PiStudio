@@ -15,6 +15,20 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — promote-all + per-task budget
+
+### Added
+- `POST /api/tasks/:id/promote-all` — apply every isolated agent's changes to the
+  working tree in one call, with per-agent conflict reporting; non-conflicting
+  agents still land.
+- per-task **budget**: `POST /api/tasks` takes `budget: { cost?, tokens? }`; when
+  the task's summed spend crosses it the server stops the remaining agents and
+  marks `budgetExceeded`. Tasks expose `budget`, `spend`, `budgetExceeded`.
+- the tasks board: budget inputs in the launcher, a spend/budget line, a
+  "budget exceeded" badge, and a **Promote all** button.
+
+---
+
 ## 2026-10-14 — per-agent git worktree isolation
 
 ### Added

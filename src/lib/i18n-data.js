@@ -56,6 +56,13 @@ window.PI_I18N = {
     'tasks.promoteApplied': 'Applied {n} file(s)',
     'tasks.promoteConflicts': 'Conflicts in {n} file(s)',
     'tasks.notIsolated': 'Shared working tree (not a git repo, or isolation is off)',
+    'tasks.promoteAll': 'Promote all',
+    'tasks.promoteAllDone': 'Applied {applied} file(s), {conflicts} conflict(s)',
+    'tasks.budget': 'Budget',
+    'tasks.budgetCost': 'max cost ($)',
+    'tasks.budgetTokens': 'max tokens',
+    'tasks.spend': 'Spend',
+    'tasks.budgetExceeded': 'Budget exceeded — agents stopped',
 
     // usage / spend
     'usage.title': 'Usage & spend',
@@ -608,6 +615,13 @@ window.PI_I18N = {
     'tasks.promoteApplied': '已应用 {n} 个文件',
     'tasks.promoteConflicts': '{n} 个文件有冲突',
     'tasks.notIsolated': '共享工作区（非 git 仓库，或已关闭隔离）',
+    'tasks.promoteAll': '合并全部',
+    'tasks.promoteAllDone': '已应用 {applied} 个文件，{conflicts} 个冲突',
+    'tasks.budget': '预算',
+    'tasks.budgetCost': '最大花费（$）',
+    'tasks.budgetTokens': '最大 Token',
+    'tasks.spend': '已花费',
+    'tasks.budgetExceeded': '超出预算 —— 已停止所有 agent',
 
     // usage / spend
     'usage.title': '用量与花费',

@@ -1438,6 +1438,21 @@ function emitTask(task, agent, evt) {
   return rec;
 }
 
+/** Record + fan out a task-level event (not tied to one agent). */
+function emitTaskEvent(task, evt) {
+  task.seq += 1;
+  const rec = { seq: task.seq, t: Date.now(), evt };
+  const payload = `data: ${JSON.stringify({ ...evt, __seq: rec.seq, __t: rec.t })}\n\n`;
+  for (const res of task.clients) {
+    try {
+      res.write(payload);
+    } catch {
+      /* dropped on close */
+    }
+  }
+  return rec;
+}
+
 function startTaskAgent(task, agent, spec) {
   let child;
   const agentCwd = agent.worktree ? agent.worktree.path : task.cwd;
@@ -1476,10 +1491,14 @@ function startTaskAgent(task, agent, spec) {
         else if (e.type === 'thinking_delta' && e.delta) agent.thinking = (agent.thinking + e.delta).slice(-8000);
       } else if (evt.type === 'message_end' && evt.message && evt.message.usage) {
         agent.usage = evt.message.usage;
+        recomputeTaskSpend(task);
+        checkTaskBudget(task);
       } else if (evt.type === 'agent_settled') {
         agent.status = 'idle';
         agent.turns += 1;
         refreshTaskStatus(task);
+        recomputeTaskSpend(task);
+        checkTaskBudget(task);
       } else if (evt.type === 'tool_execution_start' && evt.toolName) {
         agent.tools[evt.toolName] = (agent.tools[evt.toolName] || 0) + 1;
       }
@@ -1553,6 +1572,112 @@ function refreshTaskStatus(task) {
   } catch {}
 }
 
+/** Cost of one agent's usage, mirroring the leaderboard's `usageCost`. */
+function usageCost(u) {
+  if (!u || !u.cost) return 0;
+  return typeof u.cost === 'number' ? u.cost : Number(u.cost.total || 0);
+}
+
+/** Token count of one agent's usage, mirroring the leaderboard's `usageTokens`. */
+function usageTokens(u) {
+  if (!u) return 0;
+  return (u.input || 0) + (u.output || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+}
+
+/** Recompute the task's total spend from every agent's usage. */
+function recomputeTaskSpend(task) {
+  let cost = 0;
+  let tokens = 0;
+  for (const a of task.agents.values()) {
+    cost += usageCost(a.usage);
+    tokens += usageTokens(a.usage);
+  }
+  task.spend = { cost, tokens };
+  return task.spend;
+}
+
+/** Parse the optional `budget` field of a create-task request. */
+function parseBudget(b) {
+  if (!b || typeof b !== 'object') return null;
+  const cost = Number(b.cost) || 0;
+  const tokens = Number(b.tokens) || 0;
+  if (cost > 0 || tokens > 0) return { cost, tokens };
+  return null;
+}
+
+/** Stop every still-alive agent once the task's spend exceeds its budget. */
+function checkTaskBudget(task) {
+  if (!task.budget || task.budgetExceeded) return;
+  const spend = recomputeTaskSpend(task);
+  const b = task.budget;
+  if (!((b.cost > 0 && spend.cost > b.cost) || (b.tokens > 0 && spend.tokens > b.tokens))) return;
+  task.budgetExceeded = true;
+  process.stderr.write(
+    `[task ${task.id}] budget exceeded (cost=${spend.cost}/${b.cost}, tokens=${spend.tokens}/${b.tokens})\n`,
+  );
+  // Mark every live agent as stopping (NOT `task.stopping` — this is a budget
+  // stop, not a user-facing task stop) and SIGTERM its pi process.
+  for (const a of [...task.agents.values()]) {
+    if (!a.alive && !a.child) continue;
+    a.stopping = true;
+    const c = a.child;
+    if (c) {
+      try {
+        c.kill('SIGTERM');
+      } catch {}
+      setTimeout(() => {
+        if (a.child === c) {
+          try {
+            c.kill('SIGKILL');
+          } catch {}
+        }
+      }, 2000).unref?.();
+    } else {
+      a.alive = false;
+      a.status = 'stopped';
+      if (a.endedAt == null) a.endedAt = Date.now();
+    }
+  }
+  emitTaskEvent(task, { type: '__task', event: 'budget', spend, budget: task.budget });
+  refreshTaskStatus(task);
+}
+
+/** Promote every agent worktree sequentially; a conflict in one agent never
+ *  blocks the others. */
+function promoteAllTaskAgents(task) {
+  const appliedSet = new Set();
+  const conflictSet = new Set();
+  const perAgent = [];
+  let hardError = false;
+  for (const agent of [...task.agents.values()]) {
+    if (!agent.worktree) continue;
+    const entry = { agentId: agent.id, name: agent.name, applied: [], conflicts: [] };
+    let res;
+    try {
+      res = worktree.promote({ worktree: agent.worktree.path, cwd: task.cwd });
+    } catch (err) {
+      entry.error = String((err && err.message) || err);
+      hardError = true;
+      perAgent.push(entry);
+      continue;
+    }
+    entry.applied = Array.isArray(res.applied) ? res.applied : [];
+    entry.conflicts = Array.isArray(res.conflicts) ? res.conflicts : [];
+    // A failed apply that still extracted files is a conflict, not a hard error.
+    if (res.error && entry.applied.length === 0 && entry.conflicts.length === 0) {
+      entry.error = String(res.error);
+      hardError = true;
+    }
+    for (const f of entry.applied) appliedSet.add(f);
+    for (const f of entry.conflicts) conflictSet.add(f);
+    perAgent.push(entry);
+  }
+  const applied = [...appliedSet];
+  const conflicts = [...conflictSet];
+  const ok = !hardError && applied.length > 0;
+  return { ok, applied, conflicts, perAgent };
+}
+
 function createTask(opts) {
   const specs = (Array.isArray(opts.agents) ? opts.agents : []).filter((s) => s && typeof s === 'object');
   if (!specs.length) throw new Error('at least one agent spec is required');
@@ -1565,6 +1690,9 @@ function createTask(opts) {
     endedAt: null,
     clients: new Set(),
     seq: 0,
+    budget: parseBudget(opts.budget),
+    spend: { cost: 0, tokens: 0 },
+    budgetExceeded: false,
     agents: new Map(),
   };
   tasks.set(task.id, task);
@@ -1722,6 +1850,11 @@ function restartTaskAgent(task, agent) {
   agent.endedAt = null;
   agent.startedAt = Date.now();
   startTaskAgent(task, agent, agent.spec);
+  // A manual restart must work even after a budget stop, and the budget is
+  // re-evaluated against the fresh (reset) usage before the next activity.
+  task.budgetExceeded = false;
+  recomputeTaskSpend(task);
+  checkTaskBudget(task);
   refreshTaskStatus(task);
 }
 
@@ -1759,6 +1892,9 @@ function taskInfo(task) {
     endedAt: task.endedAt,
     clientCount: task.clients.size,
     seq: task.seq,
+    budget: task.budget || null,
+    spend: task.spend || { cost: 0, tokens: 0 },
+    budgetExceeded: !!task.budgetExceeded,
     agents: [...task.agents.values()].map(taskAgentInfo),
   };
 }
@@ -2309,6 +2445,10 @@ const server = http.createServer((req, res) => {
     if (parts.length === 4 && parts[3] === 'cleanup' && req.method === 'POST') {
       cleanupTaskWorktrees(task);
       return sendJson(res, 200, { ok: true });
+    }
+
+    if (parts.length === 4 && parts[3] === 'promote-all' && req.method === 'POST') {
+      return sendJson(res, 200, promoteAllTaskAgents(task));
     }
 
     if (parts.length === 4 && parts[3] === 'events') {
