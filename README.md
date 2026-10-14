@@ -188,6 +188,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | GET | `/api/tasks/:id/events` | SSE stream of every agent's events, each tagged `__agent` |
 | POST | `/api/tasks/:id/agents/:aid/command` | send an RPC command to one agent (`{ "message": "…" }` is a prompt shorthand) |
 | GET | `/api/tasks/:id/agents/:aid/diff` | an isolated agent's changed files + unified diff |
+| GET | `/api/tasks/:id/agents/:aid/merge` | 3-way merge preview (clean `content` or conflict `blocks`) |
+| POST | `/api/tasks/:id/agents/:aid/merge` | apply user-resolved files (backs up overwritten ones) |
 | POST | `/api/tasks/:id/agents/:aid/promote` | apply that agent's changes to the working tree |
 | POST | `/api/tasks/:id/promote-all` | apply every isolated agent's changes at once |
 | POST | `/api/tasks/:id/cleanup` | remove the task's git worktrees |
@@ -218,6 +220,11 @@ reported per agent; the non-conflicting ones still land). A task can also carry 
 **budget** — `{ cost, tokens }` on `POST /api/tasks` — and when the summed spend
 crosses it the remaining agents are stopped automatically and the task is marked
 `budgetExceeded`.
+
+**Merge** resolves conflicts instead of just reporting them: it runs a 3-way merge
+(`git merge-file --diff3`) of the agent's worktree against your working tree and
+lets you resolve each conflict region as **Ours** / **Theirs** / **Both** before
+applying. Anything the merge overwrites is backed up under `traces/merge-<stamp>/`.
 
 > Tasks are spawned by PiStudio itself. That is different from the
 > **Inspector → Agents** view, which merely observes pi's own `subagent`

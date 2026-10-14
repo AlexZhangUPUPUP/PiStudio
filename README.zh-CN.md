@@ -165,6 +165,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 | GET | `/api/tasks/:id/events` | 所有 agent 事件的 SSE 流，每条带 `__agent` 标记 |
 | POST | `/api/tasks/:id/agents/:aid/command` | 给某个 agent 发 RPC 命令（`{ "message": "…" }` 是 prompt 简写） |
 | GET | `/api/tasks/:id/agents/:aid/diff` | 隔离 agent 改动的文件 + 统一 diff |
+| GET | `/api/tasks/:id/agents/:aid/merge` | 三方合并预览（干净 `content` 或冲突 `blocks`） |
+| POST | `/api/tasks/:id/agents/:aid/merge` | 应用用户解决后的文件（覆盖前备份） |
 | POST | `/api/tasks/:id/agents/:aid/promote` | 把该 agent 的改动应用回工作区 |
 | POST | `/api/tasks/:id/promote-all` | 一次性应用所有隔离 agent 的改动 |
 | POST | `/api/tasks/:id/cleanup` | 移除该任务的 git worktree |
@@ -182,6 +184,8 @@ curl -s localhost:4173/api/tasks -H 'content-type: application/json' -d '{
 当任务目录是 git 仓库时，每个 agent 在自己的 **git worktree**（分支 `pistudio/<task>/<agent>`）里运行，所以并行 agent 不会互相覆盖文件。**差异**看单个 agent 改了什么，**合并回主干**把它的改动应用回你的工作区（`git apply --3way`，有冲突会报出来）。给 `POST /api/tasks` 传 `isolate: false` 可关闭隔离。
 
 **合并全部** 则一次性应用所有隔离 agent 的改动（逐个报告冲突，不冲突的照样落地）。任务还可以带**预算** —— `POST /api/tasks` 的 `{ cost, tokens }` —— 当累计花费超过它时，剩余 agent 会被自动停止，任务标记为 `budgetExceeded`。
+
+**合并** 则真正解决冲突，而不只是报告：它把 agent 的 worktree 和你的工作区做三方合并（`git merge-file --diff3`），让你把每个冲突区选为 **保留当前** / **采用 agent** / **两者都要** 再应用。被覆盖的文件会先备份到 `traces/merge-<stamp>/`。
 
 > task 是 PiStudio 自己启动的，和 **Inspector → Agents**（只是观察 pi 自带的 `subagent` 示例扩展）不同 —— 见 **子 agent**。
 

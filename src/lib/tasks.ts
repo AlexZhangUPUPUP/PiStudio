@@ -101,6 +101,28 @@ export interface PromoteResult {
   error?: string
 }
 
+export type MergeBlock =
+  | { type: 'text'; text: string }
+  | { type: 'conflict'; ours: string; base: string; theirs: string }
+
+export interface MergeFile {
+  path: string
+  status?: string
+  conflict: boolean
+  blocks?: MergeBlock[]
+  content?: string
+  binary?: boolean
+  skipped?: boolean
+}
+
+export interface MergePreview {
+  ok: boolean
+  error?: string
+  branch?: string | null
+  base?: string | null
+  files?: MergeFile[]
+}
+
 async function jget<T>(path: string): Promise<T | null> {
   try {
     const r = await fetch(apiUrl(path))
@@ -249,6 +271,49 @@ export async function promoteAgent(taskId: string, agentId: string): Promise<Pro
     }
   } catch (err) {
     return { ok: false, applied: [], conflicts: [], error: String((err as Error)?.message || err) }
+  }
+}
+
+/** Fetch the merge preview (conflict-resolution plan) for one agent's worktree. */
+export async function mergePreview(taskId: string, agentId: string): Promise<MergePreview | null> {
+  try {
+    const r = await fetch(
+      apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/merge`),
+    )
+    if (!r.ok) return null
+    return (await r.json()) as MergePreview
+  } catch {
+    return null
+  }
+}
+
+/** Apply resolved merge contents for one agent's worktree. */
+export async function mergeApply(
+  taskId: string,
+  agentId: string,
+  files: { path: string; content: string }[],
+): Promise<{ ok: boolean; applied: string[]; error?: string } | null> {
+  try {
+    const r = await fetch(
+      apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/merge`),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files }),
+      },
+    )
+    const d = await r.json().catch(() => null)
+    if (!r.ok) {
+      return {
+        ok: false,
+        applied: [],
+        error: String((d as { error?: string } | null)?.error || r.status),
+      }
+    }
+    const dd = d as { ok?: boolean; applied?: string[]; error?: string } | null
+    return { ok: !!dd?.ok, applied: dd?.applied || [], error: dd?.error }
+  } catch {
+    return null
   }
 }
 

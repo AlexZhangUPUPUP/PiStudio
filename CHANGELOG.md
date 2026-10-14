@@ -15,6 +15,20 @@ local days the work happened rather than tagged releases. Newest first.
 
 ---
 
+## 2026-10-14 — conflict merge panel
+
+### Added
+- `GET/POST /api/tasks/:id/agents/:aid/merge` — a 3-way merge preview/apply for an
+  isolated agent: per changed file it returns either a clean merged `content` or
+  structured conflict `blocks` (`ours` / `base` / `theirs`); the POST applies the
+  user-resolved files, backing up anything it overwrites to `traces/merge-<stamp>/`.
+- `merge.js` — `git merge-file --diff3` based helpers (path-gated, binary/large
+  files skipped).
+- the tasks board: a **Merge** action per isolated agent, with a panel to resolve
+  each conflict region as Ours / Theirs / Both and apply.
+
+---
+
 ## 2026-10-14 — promote-all + per-task budget
 
 ### Added

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Crown, Plus, Play, RotateCcw, Send, Square, Trash2, X, GitBranch, FileDiff, GitMerge } from 'lucide-react'
+import { Combine, Crown, Plus, Play, RotateCcw, Send, Square, Trash2, X, GitBranch, FileDiff, GitMerge } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,6 +14,8 @@ import {
   fmtTokens,
   getTask,
   listTasks,
+  mergeApply,
+  mergePreview,
   promoteAgent,
   promoteAll,
   restartAgent,
@@ -24,6 +26,8 @@ import {
   usageTokens,
   type AgentDiff,
   type CreateTaskBody,
+  type MergeFile,
+  type MergePreview,
   type PromoteResult,
   type TaskAgent,
   type TaskInfo,
@@ -149,6 +153,7 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
   const [selected, setSelected] = useState<string[]>([])
   const [compareAgents, setCompareAgents] = useState<[TaskAgent, TaskAgent] | null>(null)
   const [diffAgent, setDiffAgent] = useState<TaskAgent | null>(null)
+  const [mergeAgent, setMergeAgent] = useState<TaskAgent | null>(null)
   const [promoteAllPending, setPromoteAllPending] = useState(false)
   const [promoteAllResult, setPromoteAllResult] = useState<{ applied: number; conflicts: number } | null>(null)
   const nextKey = useRef(3)
@@ -182,19 +187,21 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (diffAgent) setDiffAgent(null)
+      if (mergeAgent) setMergeAgent(null)
+      else if (diffAgent) setDiffAgent(null)
       else if (compareAgents) setCompareAgents(null)
       else onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose, compareAgents, diffAgent])
+  }, [open, onClose, compareAgents, diffAgent, mergeAgent])
 
   // Reset compare selection/overlay whenever the viewed task changes.
   useEffect(() => {
     setSelected([])
     setCompareAgents(null)
     setDiffAgent(null)
+    setMergeAgent(null)
     setPromoteAllResult(null)
   }, [task?.id])
 
@@ -559,6 +566,7 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
                     onStop={() => stopAgentNow(a.id)}
                     onRetry={() => restartAgentNow(a.id)}
                     onDiff={() => openDiff(a)}
+                    onMerge={() => setMergeAgent(a)}
                     onPromote={() => promoteNow(a.id)}
                   />
                 ))}
@@ -586,6 +594,18 @@ export default function TasksModal({ open, onClose }: TasksModalProps) {
           onClose={() => setDiffAgent(null)}
         />
       )}
+      {mergeAgent && task && (
+        <MergeOverlay
+          taskId={task.id}
+          agent={mergeAgent}
+          t={t}
+          onClose={() => setMergeAgent(null)}
+          onApplied={async () => {
+            const next = await getTask(task.id)
+            if (next) setTask(next)
+          }}
+        />
+      )}
     </>
   )
 }
@@ -600,6 +620,7 @@ function AgentColumn({
   onStop,
   onRetry,
   onDiff,
+  onMerge,
   onPromote,
 }: {
   agent: TaskAgent
@@ -611,6 +632,7 @@ function AgentColumn({
   onStop: () => Promise<void>
   onRetry: () => Promise<void>
   onDiff: () => void
+  onMerge: () => void
   onPromote: () => Promise<PromoteResult | null>
 }) {
   const [draft, setDraft] = useState('')
@@ -678,6 +700,15 @@ function AgentColumn({
                   onClick={onDiff}
                 >
                   <FileDiff className="size-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  title={t('tasks.merge')}
+                  onClick={onMerge}
+                >
+                  <Combine className="size-3" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -959,6 +990,280 @@ function DiffOverlay({
               )}
             </>
           )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+type MergeChoice = 'ours' | 'theirs' | 'both'
+
+/** Assemble a file's resolved content from its merge blocks and per-block choices. */
+function resolveMergeFile(file: MergeFile, choices: Record<number, MergeChoice>): string {
+  if (!file.conflict) return file.content ?? ''
+  const parts: string[] = []
+  ;(file.blocks || []).forEach((block, i) => {
+    if (block.type === 'text') {
+      parts.push(block.text)
+      return
+    }
+    const choice = choices[i]
+    if (choice === 'ours') parts.push(block.ours)
+    else if (choice === 'theirs') parts.push(block.theirs)
+    else if (choice === 'both') parts.push(block.ours + block.theirs)
+  })
+  return parts.join('')
+}
+
+function MergeFileDetail({
+  file,
+  choices,
+  t,
+  onChoice,
+}: {
+  file: MergeFile
+  choices: Record<number, MergeChoice>
+  t: (k: string, vars?: Record<string, unknown>) => string
+  onChoice: (index: number, choice: MergeChoice) => void
+}) {
+  const resolved = resolveMergeFile(file, choices)
+
+  return (
+    <div className="flex flex-col gap-2">
+      {file.conflict &&
+        (file.blocks || []).map((block, i) =>
+          block.type === 'text' ? (
+            <pre
+              key={i}
+              className="overflow-x-auto whitespace-pre rounded border border-border bg-muted/20 p-2 font-mono text-[11px] leading-relaxed"
+            >
+              {block.text}
+            </pre>
+          ) : (
+            <div key={i} className="rounded border border-border p-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="mb-1 text-[10px] font-semibold text-muted-foreground">
+                    {t('tasks.mergeOurs')}
+                  </div>
+                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                    {block.ours}
+                  </pre>
+                </div>
+                <div>
+                  <div className="mb-1 text-[10px] font-semibold text-muted-foreground">
+                    {t('tasks.mergeTheirs')}
+                  </div>
+                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                    {block.theirs}
+                  </pre>
+                </div>
+              </div>
+              <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/50">
+                {block.base}
+              </pre>
+              <div className="mt-2 flex gap-1">
+                {(['ours', 'theirs', 'both'] as const).map((choice) => (
+                  <Button
+                    key={choice}
+                    variant={choices[i] === choice ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-7"
+                    onClick={() => onChoice(i, choice)}
+                  >
+                    {choice === 'ours'
+                      ? t('tasks.mergeOurs')
+                      : choice === 'theirs'
+                        ? t('tasks.mergeTheirs')
+                        : t('tasks.mergeBoth')}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ),
+        )}
+      {!file.conflict && <div className="text-[11px] text-muted-foreground">{t('tasks.mergeClean')}</div>}
+      <div>
+        <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-muted/20 p-2 font-mono text-[11px] leading-relaxed">
+          {resolved || ' '}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+function MergeOverlay({
+  taskId,
+  agent,
+  t,
+  onClose,
+  onApplied,
+}: {
+  taskId: string
+  agent: TaskAgent
+  t: (k: string, vars?: Record<string, unknown>) => string
+  onClose: () => void
+  onApplied: () => Promise<void>
+}) {
+  const [data, setData] = useState<MergePreview | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [choices, setChoices] = useState<Record<string, Record<number, MergeChoice>>>({})
+  const [pending, setPending] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    mergePreview(taskId, agent.id).then((d) => {
+      if (!alive) return
+      setData(d)
+      setLoading(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [taskId, agent.id])
+
+  const files = data?.files || []
+  const conflictFiles = files.filter((f) => f.conflict)
+
+  // Default the selected file to the first conflicted one (or the first file).
+  useEffect(() => {
+    if (!data) return
+    setSelected((s) => {
+      if (s && data.files?.some((f) => f.path === s)) return s
+      return (data.files?.find((f) => f.conflict) || data.files?.[0])?.path || null
+    })
+  }, [data])
+
+  const setChoice = (path: string, index: number, choice: MergeChoice) => {
+    setChoices((c) => ({ ...c, [path]: { ...(c[path] || {}), [index]: choice } }))
+  }
+
+  const hasUnresolved = conflictFiles.some((f) =>
+    (f.blocks || []).some((b, i) => b.type === 'conflict' && !(choices[f.path] || {})[i]),
+  )
+
+  const selectedFile = files.find((f) => f.path === selected) || null
+
+  const apply = async () => {
+    if (pending || hasUnresolved) return
+    setPending(true)
+    setResult(null)
+    try {
+      const payload = files
+        .filter((f) => !f.binary && !f.skipped)
+        .map((f) => ({
+          path: f.path,
+          content: f.conflict ? resolveMergeFile(f, choices[f.path] || {}) : (f.content ?? ''),
+        }))
+      const res = await mergeApply(taskId, agent.id, payload)
+      if (res) {
+        if (res.ok) {
+          setResult({ ok: true, text: t('tasks.mergeApplied', { n: res.applied.length }) })
+          await onApplied()
+        } else {
+          setResult({ ok: false, text: res.error || t('tasks.failed') })
+        }
+      } else {
+        setResult({ ok: false, text: t('tasks.failed') })
+      }
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('tasks.mergeTitle')}
+        className="flex max-h-[88vh] w-[min(1000px,96vw)] animate-fade-in flex-col overflow-hidden rounded-lg border border-border bg-popover text-foreground shadow-xl"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">{t('tasks.mergeTitle')}</h2>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">
+              {[agent.name, data?.branch || agent.branch, data?.base].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" className="size-7" onClick={onClose} aria-label={t('common.close')}>
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {loading ? (
+            <div className="py-8 text-center text-[12px] text-muted-foreground">…</div>
+          ) : data?.error ? (
+            <div className="text-[12px] text-destructive">{data.error}</div>
+          ) : files.length === 0 ? (
+            <div className="py-8 text-center text-[12px] text-muted-foreground">…</div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {conflictFiles.length === 0 && (
+                <div className="rounded-md border border-teal/40 bg-teal/5 px-3 py-2 text-[12px] text-teal">
+                  {t('tasks.mergeNoConflicts')}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <div className="w-64 shrink-0 self-start overflow-hidden rounded-md border border-border">
+                  {files.map((f) => (
+                    <button
+                      key={f.path}
+                      type="button"
+                      onClick={() => setSelected(f.path)}
+                      className={cn(
+                        'flex w-full items-center gap-2 border-b border-border/60 px-2 py-1.5 text-left text-[12px] last:border-b-0',
+                        selected === f.path ? 'bg-muted' : 'hover:bg-muted/50',
+                      )}
+                    >
+                      <span className="truncate font-mono">{f.path}</span>
+                      <span
+                        className={cn(
+                          'ml-auto shrink-0 rounded-full border px-1.5 py-px text-[10px]',
+                          f.conflict
+                            ? 'border-destructive/40 text-destructive'
+                            : 'border-border text-muted-foreground',
+                        )}
+                      >
+                        {f.conflict ? t('tasks.mergeConflict') : t('tasks.mergeClean')}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="min-w-0 flex-1">
+                  {selectedFile ? (
+                    <MergeFileDetail
+                      file={selectedFile}
+                      choices={choices[selectedFile.path] || {}}
+                      t={t}
+                      onChoice={(index, choice) => setChoice(selectedFile.path, index, choice)}
+                    />
+                  ) : (
+                    <div className="py-8 text-center text-[12px] text-muted-foreground">…</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+          {result && (
+            <span className={cn('text-[12px]', result.ok ? 'text-teal' : 'text-destructive')}>{result.text}</span>
+          )}
+          <Button className="ml-auto h-8" disabled={pending || hasUnresolved} onClick={apply}>
+            {pending ? '…' : t('tasks.mergeApply')}
+          </Button>
         </div>
       </div>
     </div>,

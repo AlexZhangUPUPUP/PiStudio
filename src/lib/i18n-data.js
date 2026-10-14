@@ -63,6 +63,16 @@ window.PI_I18N = {
     'tasks.budgetTokens': 'max tokens',
     'tasks.spend': 'Spend',
     'tasks.budgetExceeded': 'Budget exceeded — agents stopped',
+    'tasks.merge': 'Merge',
+    'tasks.mergeTitle': 'Merge changes',
+    'tasks.mergeOurs': 'Ours',
+    'tasks.mergeTheirs': 'Theirs',
+    'tasks.mergeBoth': 'Both',
+    'tasks.mergeClean': 'auto-merge',
+    'tasks.mergeConflict': 'conflict',
+    'tasks.mergeApply': 'Apply merge',
+    'tasks.mergeApplied': 'Merged {n} file(s)',
+    'tasks.mergeNoConflicts': 'No conflicts — everything applies cleanly',
 
     // usage / spend
     'usage.title': 'Usage & spend',
@@ -622,6 +632,16 @@ window.PI_I18N = {
     'tasks.budgetTokens': '最大 Token',
     'tasks.spend': '已花费',
     'tasks.budgetExceeded': '超出预算 —— 已停止所有 agent',
+    'tasks.merge': '合并',
+    'tasks.mergeTitle': '合并改动',
+    'tasks.mergeOurs': '保留当前',
+    'tasks.mergeTheirs': '采用 agent',
+    'tasks.mergeBoth': '两者都要',
+    'tasks.mergeClean': '自动合并',
+    'tasks.mergeConflict': '冲突',
+    'tasks.mergeApply': '应用合并',
+    'tasks.mergeApplied': '已合并 {n} 个文件',
+    'tasks.mergeNoConflicts': '没有冲突 —— 可以干净应用',
 
     // usage / spend
     'usage.title': '用量与花费',

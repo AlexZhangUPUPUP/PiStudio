@@ -47,6 +47,7 @@ const { spawn, execFileSync } = require('child_process');
 const { StringDecoder } = require('string_decoder');
 const { openIndex } = require('./db');
 const worktree = require('./worktree');
+const merge = require('./merge');
 
 // ---------------------------------------------------------------- options
 
@@ -2522,6 +2523,45 @@ const server = http.createServer((req, res) => {
       if (!agent.worktree) return sendJson(res, 200, { ok: false, error: 'not isolated' });
       const out = worktree.promote({ worktree: agent.worktree.path, cwd: task.cwd });
       return sendJson(res, 200, out);
+    }
+
+    if (parts.length === 6 && parts[3] === 'agents' && parts[5] === 'merge' && req.method === 'GET') {
+      const agent = task.agents.get(parts[4]);
+      if (!agent) return sendJson(res, 404, { error: 'unknown agent' });
+      if (!agent.worktree) return sendJson(res, 200, { ok: false, error: 'not isolated' });
+      try {
+        const out = merge.mergePreview({ cwd: task.cwd, worktree: agent.worktree.path, base: agent.worktree.base });
+        return sendJson(res, 200, {
+          ok: true,
+          branch: agent.worktree.branch,
+          base: agent.worktree.base,
+          files: out.files,
+        });
+      } catch (err) {
+        return sendJson(res, 200, { ok: false, error: String((err && err.message) || err) });
+      }
+    }
+
+    if (parts.length === 6 && parts[3] === 'agents' && parts[5] === 'merge' && req.method === 'POST') {
+      const agent = task.agents.get(parts[4]);
+      if (!agent) return sendJson(res, 404, { error: 'unknown agent' });
+      if (!agent.worktree) return sendJson(res, 200, { ok: false, error: 'not isolated' });
+      return readBody(req, (body) => {
+        let b = {};
+        try {
+          b = JSON.parse(body || '{}');
+        } catch {
+          return sendJson(res, 400, { error: 'invalid JSON' });
+        }
+        try {
+          const out = merge.mergeApply({ cwd: task.cwd, files: b.files });
+          const resp = { ok: true, applied: out.applied };
+          if (out.backup) resp.backup = out.backup;
+          return sendJson(res, 200, resp);
+        } catch (err) {
+          return sendJson(res, 200, { ok: false, error: String((err && err.message) || err) });
+        }
+      });
     }
 
     if (parts.length === 6 && parts[3] === 'agents' && (parts[5] === 'stop' || parts[5] === 'restart') && req.method === 'POST') {
