@@ -73,16 +73,21 @@ async function main() {
   if (!appPath) throw new Error('packager returned no app path')
   console.log('✓ app  :', appPath)
 
+  // @electron/packager's return value has varied across versions: some return
+  // the `.app` bundle, some the containing `<Name>-<platform>-<arch>` directory.
+  // Normalize so codesign and hdiutil always receive the bundle.
+  const bundlePath = appPath.endsWith('.app') ? appPath : path.join(appPath, `${APP_NAME}.app`)
+
   // Ad-hoc sign the bundle. Without this the app keeps only the linker's
   // ad-hoc signature (identifier "Electron", Info.plist unbound), which macOS
   // rejects at launch with:
   //   bootstrap_look_up dev.pistudio.MachPortRendezvousServer: Permission denied
   console.log('• ad-hoc signing…')
-  const sign = spawnSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' })
+  const sign = spawnSync('codesign', ['--force', '--deep', '--sign', '-', bundlePath], { stdio: 'inherit' })
   if (sign.status !== 0) throw new Error('codesign failed')
-  const verify = spawnSync('codesign', ['--verify', '--deep', '--strict', appPath], { stdio: 'inherit' })
+  const verify = spawnSync('codesign', ['--verify', '--deep', '--strict', bundlePath], { stdio: 'inherit' })
   if (verify.status !== 0) throw new Error('codesign --verify failed')
-  console.log('✓ signed (ad-hoc)')
+  console.log('✓ signed (ad-hoc)', bundlePath)
 
   if (process.argv.includes('--app-only') || process.platform !== 'darwin') {
     console.log('\nDone. (skipping .dmg)')
@@ -93,13 +98,13 @@ async function main() {
   console.log('• building dmg…')
   const res = spawnSync(
     'hdiutil',
-    ['create', '-volname', APP_NAME, '-srcfolder', appPath, '-ov', '-format', 'UDZO', dmg],
+    ['create', '-volname', APP_NAME, '-srcfolder', bundlePath, '-ov', '-format', 'UDZO', dmg],
     { stdio: 'inherit' },
   )
   if (res.status !== 0) throw new Error('hdiutil failed')
   console.log('✓ dmg  :', dmg)
   console.log('\nAd-hoc signed build — if Gatekeeper still prompts on first open:')
-  console.log(`  xattr -dr com.apple.quarantine "${appPath}"`)
+  console.log(`  xattr -dr com.apple.quarantine "${bundlePath}"`)
 }
 
 main().catch((err) => {
