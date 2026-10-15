@@ -158,7 +158,11 @@ export async function sendCommand(cmd: Record<string, unknown>): Promise<Respons
   // Route to (and switch to) the target conversation's channel *before* building
   // the URL, so apiUrl() picks the new `c`.
   if (type === 'switch_session' && typeof target === 'string') {
-    setSessionKey(keyForSessionPath(target))
+    const key = keyForSessionPath(target)
+    // Switching to the conversation already on screen would send `switch_session`
+    // to its running pi process, which aborts the in-flight turn. It is a no-op.
+    if (key === sessionKey) return new Response('{"ok":true}', { status: 200 })
+    setSessionKey(key)
   } else if (type === 'new_session' || type === 'fork' || type === 'clone') {
     setSessionKey('new:' + Math.random().toString(36).slice(2, 10))
   }
