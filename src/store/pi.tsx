@@ -6,12 +6,16 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from 'react'
 import {
   apiUrl,
+  bindSessionPath,
   extractText,
+  getSessionKey,
   messagesToItems,
+  onSessionKeyChange,
   sendCommand,
   uid,
   type AssBlock,
@@ -566,6 +570,10 @@ const PiContext = createContext<PiContextValue | null>(null)
 
 export function PiProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState)
+  // Which conversation this tab is viewing. Each has its own `c` (and thus its
+  // own pi process), so switching does not stop the one we left.
+  const [channel, setChannel] = useState(getSessionKey())
+  useEffect(() => onSessionKeyChange(() => setChannel(getSessionKey())), [])
   const { t, lang, setLang } = useI18n()
   const stateRef = useRef(state)
   stateRef.current = state
@@ -633,6 +641,11 @@ export function PiProvider({ children }: { children: ReactNode }) {
           void sendCommand({ type: 'get_state' })
           void sendCommand({ type: 'get_session_stats' })
         }
+        // Bind this channel to the session file pi reports, so switching back to
+        // the saved session re-attaches to the same still-running process.
+        if (data.success && data.command === 'get_state' && typeof data.data?.sessionFile === 'string') {
+          bindSessionPath(data.data.sessionFile)
+        }
         responseBus.current.get(data.command)?.forEach((cb) => {
           try {
             cb(data)
@@ -653,7 +666,7 @@ export function PiProvider({ children }: { children: ReactNode }) {
     }
     es.onerror = () => dispatch({ type: 'connected', value: false })
     return () => es.close()
-  }, [])
+  }, [channel])
 
   const toast = useCallback((message: string, type: Toast['type'] = 'info', ms = 5200) => {
     const id = uid('t')

@@ -2855,11 +2855,15 @@ server.on('error', (err) => {
   throw err;
 });
 
-/** Reap pi processes whose tab is long gone. */
+/** Reap pi processes whose conversation has been idle for a while. */
 const reaper = setInterval(() => {
   const now = Date.now();
   for (const [id, sess] of sessions) {
-    if (sess.clients.size > 0 || now - sess.lastSeen < SESSION_IDLE_MS) continue;
+    // Idle = no viewer AND no activity for SESSION_IDLE_MS. Using the last
+    // *event* (not just last client access) keeps a conversation that is still
+    // running while the tab looks at another one from being killed mid-run.
+    const last = Math.max(sess.lastSeen || 0, (sess.lastEvent && sess.lastEvent.at) || 0);
+    if (sess.clients.size > 0 || now - last < SESSION_IDLE_MS) continue;
     process.stderr.write(`[pistudio] reaping idle session ${id}\n`);
     sessions.delete(id);
     stopPi(sess, () => {});

@@ -101,17 +101,67 @@ export function getAuthToken(): string {
   }
 }
 
-/** Append the session id (and token) to an API path. */
+/* --------------------------------------------------- per-session channels *
+ * pi keeps one conversation per process, and the pi-gui server keeps one pi
+ * process per client id (`c`). So a distinct `c` per conversation means one
+ * live process per conversation: switching sessions no longer replaces (and so
+ * stops) the current one — they run in parallel, and switching back re-attaches
+ * to the process that is still running it.
+ *
+ * The channel key is the session file path once we know it; a brand-new session
+ * starts under a temporary key, bound to its file as soon as pi reports it.
+ */
+let sessionKey = ''
+const pathToKey = new Map<string, string>()
+const KEY_EVENT = 'pi-gui-session-key'
+
+export function getSessionKey(): string {
+  return sessionKey
+}
+
+/** Stable channel key for a saved session file (falls back to the path itself). */
+export function keyForSessionPath(p: string): string {
+  return pathToKey.get(p) || p
+}
+
+/** Remember which channel a session file belongs to (so switching re-attaches). */
+export function bindSessionPath(p: string, key: string = sessionKey): void {
+  if (p) pathToKey.set(p, key)
+}
+
+function setSessionKey(key: string): void {
+  if (key === sessionKey) return
+  sessionKey = key
+  try {
+    window.dispatchEvent(new Event(KEY_EVENT))
+  } catch {}
+}
+
+export function onSessionKeyChange(cb: () => void): () => void {
+  window.addEventListener(KEY_EVENT, cb)
+  return () => window.removeEventListener(KEY_EVENT, cb)
+}
+
+/** Append the client id (tab + active session) and token to an API path. */
 export function apiUrl(path: string): string {
-  const id = getClientId()
+  const id = getClientId() + (sessionKey ? ':' + sessionKey : '')
   let out = path + (path.includes('?') ? '&' : '?') + 'c=' + encodeURIComponent(id)
   const token = getAuthToken()
   if (token) out += '&token=' + encodeURIComponent(token)
   return out
 }
 
-/** POST one raw RPC command to this tab's pi process. */
+/** POST one raw RPC command to the target conversation's pi process. */
 export async function sendCommand(cmd: Record<string, unknown>): Promise<Response> {
+  const type = String((cmd as { type?: unknown }).type ?? '')
+  const target = (cmd as { sessionPath?: unknown }).sessionPath
+  // Route to (and switch to) the target conversation's channel *before* building
+  // the URL, so apiUrl() picks the new `c`.
+  if (type === 'switch_session' && typeof target === 'string') {
+    setSessionKey(keyForSessionPath(target))
+  } else if (type === 'new_session' || type === 'fork' || type === 'clone') {
+    setSessionKey('new:' + Math.random().toString(36).slice(2, 10))
+  }
   return fetch(apiUrl('/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
