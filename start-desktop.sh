@@ -9,6 +9,11 @@ set -euo pipefail
 CALLER_PWD="$PWD"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
+# The desktop shell must run as Electron, not as Node. If this script was
+# launched from a process whose environment carries ELECTRON_RUN_AS_NODE (e.g.
+# a `pi` started by a PiStudio server), clear it or Electron runs as Node and
+# crashes in electron/main.js. See the guard there.
+unset ELECTRON_RUN_AS_NODE
 
 if [ ! -x "$DIR/node_modules/.bin/electron" ] || [ ! -f "$DIR/node_modules/electron/path.txt" ]; then
   echo "Electron is not installed — run 'npm install' first (mirror is configured in .npmrc)." >&2

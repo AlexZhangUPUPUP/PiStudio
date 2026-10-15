@@ -17,6 +17,19 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// The shell must run as Electron, never as Node. If ELECTRON_RUN_AS_NODE leaked
+// into our environment (e.g. `pi` was started by a PiStudio server, which sets
+// it for itself), `require('electron')` yields no app/ipcMain and the app dies
+// with a cryptic `Cannot read properties of undefined (reading 'on')`. Fail
+// with an actionable message instead. start-desktop.sh unsets it defensively.
+if (process.env.ELECTRON_RUN_AS_NODE) {
+  console.error(
+    '[pistudio] ELECTRON_RUN_AS_NODE is set — the desktop shell cannot run as Node.\n' +
+      '           Unset it and relaunch (start-desktop.sh does this automatically).',
+  );
+  process.exit(1);
+}
+
 const ROOT = path.join(__dirname, '..');
 const SERVER = path.join(ROOT, 'server.js');
 const STATE_FILE = () => path.join(app.getPath('userData'), 'window-state.json');

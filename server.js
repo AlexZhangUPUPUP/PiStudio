@@ -73,6 +73,21 @@ const PORT = Number(opt('port', process.env.PORT || 4173));
 const HOST = opt('host', '127.0.0.1');
 const CWD = path.resolve(opt('cwd', process.env.PI_GUI_CWD || process.cwd()));
 const PI_BIN = opt('pi', process.env.PI_BIN || 'pi');
+
+/**
+ * Environment for a spawned `pi` child.
+ *
+ * The server runs as Electron in Node mode (`ELECTRON_RUN_AS_NODE=1`, set by
+ * electron/main.js). That flag is for *this* process only; if it leaks into
+ * `pi`, then anything `pi` launches — including another Electron, e.g. the
+ * `pistudio` launcher — silently runs as plain Node and dies with a cryptic
+ * `Cannot read properties of undefined (reading 'on')`. Strip it.
+ */
+function piChildEnv(extra) {
+  const env = { ...process.env, ...extra };
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
 // The React UI is built by Vite into dist/. The original vanilla frontend was
 // retired; it lives in legacy/vanilla-ui/ for reference only.
 const PUBLIC_DIR = path.join(__dirname, 'dist');
@@ -486,7 +501,7 @@ function startPi(sess) {
 
   sess.child = spawn(PI_BIN, launchArgs, {
     cwd: CWD,
-    env: { ...process.env, PI_GUI_URL: serverUrl, PI_GUI_SESSION: sess.id },
+    env: piChildEnv({ PI_GUI_URL: serverUrl, PI_GUI_SESSION: sess.id }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   sess.alive = true;
@@ -1553,7 +1568,7 @@ function startTaskAgent(task, agent, spec) {
   try {
     child = spawn(PI_BIN, taskAgentArgs(spec), {
       cwd: agentCwd,
-      env: { ...process.env, PI_GUI_TASK: task.id, PI_GUI_AGENT: agent.id },
+      env: piChildEnv({ PI_GUI_TASK: task.id, PI_GUI_AGENT: agent.id }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
   } catch (err) {
