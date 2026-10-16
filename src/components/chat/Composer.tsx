@@ -292,6 +292,17 @@ export function Composer({ streaming, disabled }: ComposerProps) {
       fr.readAsDataURL(file)
     })
 
+  /** Wrap already-decoded base64 as an attachment — used when the browser only
+   *  gave us the image as text (a `data:` URL, or a `{data, mimeType}` JSON). */
+  const attachmentFromData = (data: string, mimeType: string, name: string): Attachment => ({
+    id: uid('att'),
+    data,
+    mimeType,
+    bytes: Math.floor((data.length * 3) / 4),
+    name,
+    url: `data:${mimeType};base64,${data}`,
+  })
+
   const addFiles = async (files: FileList | File[]) => {
     const list = Array.from(files)
     let added = 0
@@ -405,22 +416,58 @@ export function Composer({ streaming, disabled }: ComposerProps) {
   }
 
   const onPaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
-    const dtItems = e.clipboardData?.items
-    if (!dtItems) return
+    const dt = e.clipboardData
+    if (!dt) return
+
+    // 1) The clipboard carries an actual image file — the common case.
     const files: File[] = []
-    for (let i = 0; i < dtItems.length; i++) {
-      const it = dtItems[i]
+    for (let i = 0; i < dt.items.length; i++) {
+      const it = dt.items[i]
       if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
         const f = it.getAsFile()
         if (f) files.push(f)
       }
     }
-    if (!files.length) return
-    // Copying an image usually also puts its base64 on the clipboard as
-    // text/plain; letting the default through pasted that blob into the prompt.
-    // Always take the image and drop the text.
-    e.preventDefault()
-    void addFiles(files)
+    if (files.length) {
+      e.preventDefault()
+      void addFiles(files)
+      return
+    }
+
+    // 2) Some sources only put the image in the text flavours: a `data:` URL
+    // (often wrapped in HTML) or this app's own `{data, mimeType}` JSON. Attach
+    // that — otherwise the base64/JSON gets pasted as the prompt, which is the
+    // "wall of base64" bug.
+    const html = dt.getData('text/html') || ''
+    const text = dt.getData('text/plain') || ''
+    const url =
+      /data:(image\/[\w.+-]+);base64,([A-Za-z0-9+/=\s]+)/i.exec(html) ??
+      /data:(image\/[\w.+-]+);base64,([A-Za-z0-9+/=\s]+)/i.exec(text)
+    let data: string | null = null
+    let mimeType: string | null = null
+    if (url) {
+      mimeType = url[1] ?? null
+      data = (url[2] ?? '').replace(/\s+/g, '')
+    } else {
+      try {
+        const j = JSON.parse(text) as { data?: unknown; mimeType?: unknown }
+        if (typeof j.data === 'string' && typeof j.mimeType === 'string' && j.mimeType.startsWith('image/')) {
+          mimeType = j.mimeType
+          data = j.data.replace(/\s+/g, '')
+        }
+      } catch {
+        /* not JSON — an ordinary text paste */
+      }
+    }
+    if (data && mimeType) {
+      e.preventDefault()
+      if (Math.floor((data.length * 3) / 4) > MAX_IMAGE_BYTES) {
+        toast(t('attach.tooLarge', { mb: (Math.floor((data.length * 3) / 4) / 1024 / 1024).toFixed(1) }), 'warning')
+        return
+      }
+      setAttachments((prev) => [...prev, attachmentFromData(data, mimeType, 'pasted-image')])
+      toast(t('attach.one', { n: 1 }), 'info', 1600)
+    }
   }
 
   const onDragOver = (e: ReactDragEvent<HTMLDivElement>) => {
