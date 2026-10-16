@@ -323,7 +323,7 @@ export function Composer({ streaming, disabled }: ComposerProps) {
   const submit = () => {
     const text = draft
     const trimmed = text.trim()
-    const images = attachments.map((a) => ({ data: a.data, mimeType: a.mimeType }))
+    const images = attachments.map((a) => ({ type: 'image' as const, data: a.data, mimeType: a.mimeType }))
     if (!trimmed && !images.length) return
     closeAc()
     if (trimmed) pushHistory(trimmed)

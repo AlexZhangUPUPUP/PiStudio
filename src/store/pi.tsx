@@ -547,7 +547,7 @@ interface PiContextValue extends PiState {
   t: TFunc
   lang: Lang
   setLang: (l: Lang) => void
-  send: (text: string, images?: { data: string; mimeType: string }[]) => void
+  send: (text: string, images?: { type: 'image'; data: string; mimeType: string }[]) => void
   abort: () => void
   restart: () => void
   newSession: () => void
@@ -674,7 +674,7 @@ export function PiProvider({ children }: { children: ReactNode }) {
     setTimeout(() => dispatch({ type: 'untoast', id }), ms)
   }, [])
 
-  const send = useCallback((text: string, images?: { data: string; mimeType: string }[]) => {
+  const send = useCallback((text: string, images?: { type: 'image'; data: string; mimeType: string }[]) => {
     const trimmed = text.trim()
     if (!trimmed) return
     try {
