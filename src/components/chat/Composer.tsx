@@ -408,18 +408,18 @@ export function Composer({ streaming, disabled }: ComposerProps) {
     const dtItems = e.clipboardData?.items
     if (!dtItems) return
     const files: File[] = []
-    let hasText = false
     for (let i = 0; i < dtItems.length; i++) {
       const it = dtItems[i]
       if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
         const f = it.getAsFile()
         if (f) files.push(f)
-      } else if (it.kind === 'string' && it.type === 'text/plain') {
-        hasText = true
       }
     }
     if (!files.length) return
-    if (!hasText) e.preventDefault()
+    // Copying an image usually also puts its base64 on the clipboard as
+    // text/plain; letting the default through pasted that blob into the prompt.
+    // Always take the image and drop the text.
+    e.preventDefault()
     void addFiles(files)
   }
 
