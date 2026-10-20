@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Brain, Check, ChevronRight, Copy, GitBranch, RefreshCw, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { fmtTokens, type ChatItem } from '@/lib/pi'
+import { fmtTokens, type ChatImage, type ChatItem } from '@/lib/pi'
 import { cacheHitRate } from '@/lib/format'
 import { usePi } from '@/store/pi'
 import Markdown from '@/components/markdown/Markdown'
@@ -17,6 +17,7 @@ export function MessageBubble({
   isLastUser?: boolean
 }) {
   const { t } = usePi()
+  const [preview, setPreview] = useState<ChatImage | null>(null)
 
   if (item.kind === 'notice')
     return (
@@ -46,8 +47,42 @@ export function MessageBubble({
       <div className="flex w-full animate-fade-in flex-col items-end gap-1">
         <div className="flex w-full min-w-0 justify-end gap-2">
           <div className="max-w-[min(85%,42rem)] min-w-0 overflow-hidden rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
-            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.text}</div>
-            {item.images > 0 && <div className="mt-1 text-[11px] opacity-70">{item.images} image(s)</div>}
+            {item.text && (
+              <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.text}</div>
+            )}
+            {item.images.length > 0 && (
+              <div className={item.text ? 'mt-1.5 flex flex-wrap gap-1.5' : 'flex flex-wrap gap-1.5'}>
+                {item.images.map((img, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setPreview(img)}
+                    className="overflow-hidden rounded-lg border border-white/15 transition hover:opacity-90"
+                    title={t('chat.openImage')}
+                  >
+                    <img
+                      src={`data:${img.mimeType};base64,${img.data}`}
+                      alt=""
+                      className="max-h-44 max-w-[16rem] object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+            {preview && (
+              <div
+                className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6"
+                onClick={() => setPreview(null)}
+                role="dialog"
+                aria-modal="true"
+              >
+                <img
+                  src={`data:${preview.mimeType};base64,${preview.data}`}
+                  alt=""
+                  className="max-h-[90vh] max-w-[92vw] rounded-lg shadow-2xl"
+                />
+              </div>
+            )}
           </div>
           <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
             <User className="size-3.5" />

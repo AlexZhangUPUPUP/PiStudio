@@ -15,6 +15,8 @@ import {
   extractText,
   getSessionKey,
   messagesToItems,
+  extractImages,
+  extractUserText,
   onSessionKeyChange,
   sendCommand,
   uid,
@@ -246,10 +248,8 @@ function reduceEvent(state: PiState, e: Record<string, any>): PiState {
           items: state.items.concat({
             kind: 'user',
             id: uid('u'),
-            text: extractText(m.content),
-            images: Array.isArray(m.content)
-              ? m.content.filter((c: any) => c && c.type === 'image').length
-              : 0,
+            text: extractUserText(m.content),
+            images: extractImages(m.content),
           }),
         }
       if (m.role === 'assistant')

@@ -40,8 +40,13 @@ export type AssBlock =
       endedAt?: number
     }
 
+export interface ChatImage {
+  data: string
+  mimeType: string
+}
+
 export type ChatItem =
-  | { kind: 'user'; id: string; text: string; images: number }
+  | { kind: 'user'; id: string; text: string; images: ChatImage[] }
   | {
       kind: 'assistant'
       id: string
@@ -175,6 +180,38 @@ export async function sendCommand(cmd: Record<string, unknown>): Promise<Respons
 
 /* --------------------------------------------------------------- helpers */
 
+/** The parts array of a raw content value (message or tool result). */
+function contentParts(result: unknown): any[] {
+  const obj = result as Record<string, any>
+  const content = obj?.content ?? result
+  return Array.isArray(content) ? content : []
+}
+
+/** Image parts of a user message, ready for a `data:` URL. */
+export function extractImages(result: unknown): ChatImage[] {
+  return contentParts(result)
+    .filter((c) => c && c.type === 'image' && typeof c.data === 'string')
+    .map((c) => ({ data: String(c.data), mimeType: typeof c.mimeType === 'string' ? c.mimeType : 'image/png' }))
+}
+
+/** User-message text: text parts only, no `[image]` placeholders. */
+export function extractUserText(result: unknown): string {
+  if (typeof result === 'string') return result
+  return contentParts(result)
+    .map((c) =>
+      c && c.type === 'text'
+        ? c.text
+        : c && c.type === 'thinking'
+          ? (c.thinking ?? c.text ?? '')
+          : typeof c === 'string'
+            ? c
+            : '',
+    )
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+}
+
 /** Flatten a raw pi content / tool-result value into plain text. */
 export function extractText(result: unknown): string {
   if (result == null) return ''
@@ -212,10 +249,8 @@ export function messagesToItems(messages: RawMessage[]): ChatItem[] {
       items.push({
         kind: 'user',
         id: `h-${i}`,
-        text: extractText(m.content),
-        images: Array.isArray(m.content)
-          ? m.content.filter((c) => c && c.type === 'image').length
-          : 0,
+        text: extractUserText(m.content),
+        images: extractImages(m.content),
       })
       return
     }
