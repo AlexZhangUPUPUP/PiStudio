@@ -15,6 +15,29 @@ import { usePi } from '@/store/pi'
 /* ------------------------------------------------------------- constants */
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024
+
+/**
+ * A raw base64 image payload with no `data:` prefix. Some sources (screenshot
+ * tools, "copy image data" menu items) put exactly this on the clipboard, and
+ * pasting it used to send a wall of base64 as the prompt. Accept it only when
+ * the decoded prefix is a known image magic, so long text is left alone.
+ */
+function bareImage(text: string): { data: string; mimeType: string } | null {
+  const raw = text.trim()
+  if (raw.length <= 256 || !/^[A-Za-z0-9+/=\s]+$/.test(raw)) return null
+  const data = raw.replace(/\s+/g, '')
+  const magic = data.slice(0, 16)
+  const mimeType = magic.startsWith('/9j/')
+    ? 'image/jpeg'
+    : magic.startsWith('iVBOR')
+      ? 'image/png'
+      : magic.startsWith('R0lGOD')
+        ? 'image/gif'
+        : magic.startsWith('UklGR')
+          ? 'image/webp'
+          : null
+  return mimeType ? { data, mimeType } : null
+}
 const DRAFT_KEY = 'pi-gui-draft'
 const HIST_KEY = 'pi-gui-history'
 const HIST_MAX = 50
@@ -322,8 +345,20 @@ export function Composer({ streaming, disabled }: ComposerProps) {
 
   const submit = () => {
     const text = draft
-    const trimmed = text.trim()
-    const images = attachments.map((a) => ({ type: 'image' as const, data: a.data, mimeType: a.mimeType }))
+    let trimmed = text.trim()
+    let images = attachments.map((a) => ({ type: 'image' as const, data: a.data, mimeType: a.mimeType }))
+    // Safety net for paths other than paste (menu insert, autofill, …).
+    if (!images.length) {
+      const bare = bareImage(trimmed)
+      if (bare) {
+        if (Math.floor((bare.data.length * 3) / 4) > MAX_IMAGE_BYTES) {
+          toast(t('attach.tooLarge', { mb: (Math.floor((bare.data.length * 3) / 4) / 1024 / 1024).toFixed(1) }), 'warning')
+          return
+        }
+        images = [{ type: 'image' as const, data: bare.data, mimeType: bare.mimeType }]
+        trimmed = ''
+      }
+    }
     if (!trimmed && !images.length) return
     closeAc()
     if (trimmed) pushHistory(trimmed)
@@ -457,6 +492,15 @@ export function Composer({ streaming, disabled }: ComposerProps) {
         }
       } catch {
         /* not JSON — an ordinary text paste */
+      }
+    }
+    // 3) Some sources put the raw base64 payload on the clipboard with no
+    // prefix at all; accept it only when the magic bytes say it is an image.
+    if (!data) {
+      const bare = bareImage(text)
+      if (bare) {
+        mimeType = bare.mimeType
+        data = bare.data
       }
     }
     if (data && mimeType) {

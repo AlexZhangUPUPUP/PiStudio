@@ -43,10 +43,10 @@ export function MessageBubble({
 
   if (item.kind === 'user')
     return (
-      <div className="flex animate-fade-in flex-col items-end gap-1">
-        <div className="flex justify-end gap-2">
-          <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
-            <div className="whitespace-pre-wrap break-words">{item.text}</div>
+      <div className="flex w-full animate-fade-in flex-col items-end gap-1">
+        <div className="flex w-full min-w-0 justify-end gap-2">
+          <div className="max-w-[85%] min-w-0 overflow-hidden rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
+            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.text}</div>
             {item.images > 0 && <div className="mt-1 text-[11px] opacity-70">{item.images} image(s)</div>}
           </div>
           <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
