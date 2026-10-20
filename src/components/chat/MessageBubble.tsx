@@ -45,7 +45,7 @@ export function MessageBubble({
     return (
       <div className="flex w-full animate-fade-in flex-col items-end gap-1">
         <div className="flex w-full min-w-0 justify-end gap-2">
-          <div className="max-w-[85%] min-w-0 overflow-hidden rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
+          <div className="max-w-[min(85%,42rem)] min-w-0 overflow-hidden rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
             <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.text}</div>
             {item.images > 0 && <div className="mt-1 text-[11px] opacity-70">{item.images} image(s)</div>}
           </div>
