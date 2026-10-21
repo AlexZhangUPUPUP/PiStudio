@@ -563,6 +563,7 @@ export function Composer({ streaming, disabled }: ComposerProps) {
   }
 
   const onDrop = (e: ReactDragEvent<HTMLDivElement>) => {
+    e.stopPropagation()
     if (!e.dataTransfer) return
     const files = Array.from(e.dataTransfer.files).filter((f) => f.type && (f.type.startsWith('image/') || isPdf(f)))
     if (files.length) {
@@ -570,6 +571,33 @@ export function Composer({ streaming, disabled }: ComposerProps) {
       void addFiles(files)
     }
   }
+
+  // Accept drops anywhere in the window, not only on the composer: a file
+  // dropped on the transcript used to be ignored (or navigate the renderer).
+  const addFilesRef = useRef(addFiles)
+  addFilesRef.current = addFiles
+  useEffect(() => {
+    const hasFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    const onDragOver = (e: DragEvent): void => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDrop = (e: DragEvent): void => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      const dropped = Array.from(e.dataTransfer?.files ?? []).filter(
+        (f) => f.type?.startsWith('image/') || isPdf(f),
+      )
+      if (dropped.length) void addFilesRef.current(dropped)
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [])
 
   const canSend = !disabled && (!!draft.trim() || attachments.length > 0)
 
