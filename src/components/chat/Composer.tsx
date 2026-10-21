@@ -321,8 +321,10 @@ export function Composer({ streaming, disabled }: ComposerProps) {
           url: '',
           text,
         }
-      } catch {
-        toast(t('attach.pdfFailed'), 'error')
+      } catch (err) {
+        const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+        console.error('[pdf]', err)
+        toast(`${t('attach.pdfFailed')} (${detail.slice(0, 120)})`, 'error')
         return null
       }
     }

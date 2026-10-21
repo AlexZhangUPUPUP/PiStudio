@@ -6,15 +6,22 @@
  * Extraction is capped so a 500-page scan cannot blow up the context window.
  */
 import * as pdfjs from 'pdfjs-dist'
-import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
+// Served as a plain `.js` from public/: the packaged app's static server knows
+// `text/javascript` for `.js` (not `.mjs`), and CSP allows same-origin workers.
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.js'
 
 const MAX_PAGES = 50
 const MAX_CHARS = 200_000
 
 export async function extractPdfText(data: Uint8Array): Promise<string> {
-  const task = pdfjs.getDocument({ data })
+  const task = pdfjs.getDocument({
+    data,
+    // CJK text needs the packaged CMaps; standard fonts cover PDFs that embed none.
+    cMapUrl: '/pdfjs/cmaps/',
+    cMapPacked: true,
+    standardFontDataUrl: '/pdfjs/standard_fonts/',
+  })
   const doc = await task.promise
   try {
     const out: string[] = []

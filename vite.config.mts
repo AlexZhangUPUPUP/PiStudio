@@ -9,9 +9,6 @@ const API_TARGET = process.env.PI_API || 'http://127.0.0.1:4173'
 
 export default defineConfig({
   plugins: [react()],
-  // `public/` holds the legacy vanilla UI that server.js falls back to; don't
-  // let Vite copy it into the new build.
-  publicDir: false,
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
