@@ -5,16 +5,20 @@ import type {
   DragEvent as ReactDragEvent,
   KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
-import { ArrowUp, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, FileText, Paperclip, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { apiUrl, sendCommand, uid } from '@/lib/pi'
+import { extractPdfText } from '@/lib/pdf'
 import { usePi } from '@/store/pi'
 
 /* ------------------------------------------------------------- constants */
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024
+const MAX_PDF_BYTES = 20 * 1024 * 1024
+
+const isPdf = (file: File): boolean => file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
 
 /**
  * A raw base64 image payload with no `data:` prefix. Some sources (screenshot
@@ -46,13 +50,16 @@ const HIST_MAX = 50
 
 interface Attachment {
   id: string
-  /** base64 payload, without the `data:` prefix (matches send's image shape) */
+  kind: 'image' | 'file'
+  /** base64 payload for images, empty for files */
   data: string
   mimeType: string
   bytes: number
   name: string
   /** data URL used only for the thumbnail preview */
   url: string
+  /** extracted text for PDFs */
+  text?: string
 }
 
 interface AcItem {
@@ -290,35 +297,65 @@ export function Composer({ streaming, disabled }: ComposerProps) {
 
   /* --------------------------------------------------------- attachments */
 
-  const fileToAttachment = (file: File): Promise<Attachment | null> =>
-    new Promise((resolve) => {
-      if (!file || !file.type || !file.type.startsWith('image/')) return resolve(null)
-      if (file.size > MAX_IMAGE_BYTES) {
+  const fileToAttachment = async (file: File): Promise<Attachment | null> => {
+    if (!file || !file.type) return null
+
+    if (isPdf(file)) {
+      if (file.size > MAX_PDF_BYTES) {
         toast(t('attach.tooLarge', { mb: (file.size / 1024 / 1024).toFixed(1) }), 'warning')
-        return resolve(null)
+        return null
       }
-      const fr = new FileReader()
-      fr.onload = () => {
-        const raw = String(fr.result || '')
-        const m = /^data:([^;]+);base64,(.*)$/.exec(raw)
-        if (!m) return resolve(null)
-        resolve({
+      try {
+        const text = await extractPdfText(new Uint8Array(await file.arrayBuffer()))
+        if (!text.trim()) {
+          toast(t('attach.pdfEmpty'), 'warning')
+          return null
+        }
+        return {
           id: uid('att'),
-          data: m[2],
-          mimeType: m[1],
+          kind: 'file',
+          data: '',
+          mimeType: 'application/pdf',
           bytes: file.size,
-          name: file.name || 'pasted-image',
-          url: raw,
-        })
+          name: file.name || 'document.pdf',
+          url: '',
+          text,
+        }
+      } catch {
+        toast(t('attach.pdfFailed'), 'error')
+        return null
       }
-      fr.onerror = () => resolve(null)
+    }
+
+    if (!file.type.startsWith('image/')) return null
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast(t('attach.tooLarge', { mb: (file.size / 1024 / 1024).toFixed(1) }), 'warning')
+      return null
+    }
+    const raw = await new Promise<string>((resolve, reject) => {
+      const fr = new FileReader()
+      fr.onload = () => resolve(String(fr.result || ''))
+      fr.onerror = () => reject(new Error('read failed'))
       fr.readAsDataURL(file)
-    })
+    }).catch(() => '')
+    const m = /^data:([^;]+);base64,(.*)$/.exec(raw)
+    if (!m) return null
+    return {
+      id: uid('att'),
+      kind: 'image',
+      data: m[2] ?? '',
+      mimeType: m[1] ?? 'image/png',
+      bytes: file.size,
+      name: file.name || 'pasted-image',
+      url: raw,
+    }
+  }
 
   /** Wrap already-decoded base64 as an attachment — used when the browser only
    *  gave us the image as text (a `data:` URL, or a `{data, mimeType}` JSON). */
   const attachmentFromData = (data: string, mimeType: string, name: string): Attachment => ({
     id: uid('att'),
+    kind: 'image',
     data,
     mimeType,
     bytes: Math.floor((data.length * 3) / 4),
@@ -346,7 +383,14 @@ export function Composer({ streaming, disabled }: ComposerProps) {
   const submit = () => {
     const text = draft
     let trimmed = text.trim()
-    let images = attachments.map((a) => ({ type: 'image' as const, data: a.data, mimeType: a.mimeType }))
+    let images = attachments
+      .filter((a) => a.kind === 'image')
+      .map((a) => ({ type: 'image' as const, data: a.data, mimeType: a.mimeType }))
+    const fileBlocks = attachments
+      .filter((a) => a.kind === 'file')
+      .map((a) => `<file name="${a.name}">\n${a.text ?? ''}\n</file>`)
+    let prompt = trimmed
+    if (fileBlocks.length) prompt = [trimmed, ...fileBlocks].filter(Boolean).join('\n\n')
     // Safety net for paths other than paste (menu insert, autofill, …).
     if (!images.length) {
       const bare = bareImage(trimmed)
@@ -359,7 +403,7 @@ export function Composer({ streaming, disabled }: ComposerProps) {
         trimmed = ''
       }
     }
-    if (!trimmed && !images.length) return
+    if (!prompt && !images.length) return
     closeAc()
     if (trimmed) pushHistory(trimmed)
     pendingCaret.current = null
@@ -368,8 +412,8 @@ export function Composer({ streaming, disabled }: ComposerProps) {
     try {
       localStorage.removeItem(DRAFT_KEY)
     } catch {}
-    if (trimmed) {
-      send(text, images.length ? images : undefined)
+    if (prompt) {
+      send(prompt, images.length ? images : undefined)
     } else {
       // image-only prompt: the store's send() requires non-empty text
       void sendCommand({ type: 'prompt', message: '', images })
@@ -458,7 +502,7 @@ export function Composer({ streaming, disabled }: ComposerProps) {
     const files: File[] = []
     for (let i = 0; i < dt.items.length; i++) {
       const it = dt.items[i]
-      if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+      if (it.kind === 'file' && it.type && (it.type.startsWith('image/') || it.type === 'application/pdf')) {
         const f = it.getAsFile()
         if (f) files.push(f)
       }
@@ -520,7 +564,7 @@ export function Composer({ streaming, disabled }: ComposerProps) {
 
   const onDrop = (e: ReactDragEvent<HTMLDivElement>) => {
     if (!e.dataTransfer) return
-    const files = Array.from(e.dataTransfer.files).filter((f) => f.type && f.type.startsWith('image/'))
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type && (f.type.startsWith('image/') || isPdf(f)))
     if (files.length) {
       e.preventDefault()
       void addFiles(files)
@@ -545,7 +589,16 @@ export function Composer({ streaming, disabled }: ComposerProps) {
                 key={att.id}
                 className="group relative size-16 overflow-hidden rounded-lg border border-border"
               >
-                <img src={att.url} alt={att.name} className="size-full object-cover" />
+                {att.kind === 'image' ? (
+                  <img src={att.url} alt={att.name} className="size-full object-cover" />
+                ) : (
+                  <div className="flex size-full flex-col items-center justify-center gap-0.5 p-1 text-center">
+                    <FileText className="size-4 text-muted-foreground" />
+                    <span className="line-clamp-2 break-all text-[8px] leading-tight text-muted-foreground">
+                      {att.name}
+                    </span>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== att.id))}
@@ -650,7 +703,7 @@ export function Composer({ streaming, disabled }: ComposerProps) {
         </div>
       </div>
 
-      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFileChange} />
+      <input ref={fileRef} type="file" accept="image/*,.pdf,application/pdf" multiple hidden onChange={onFileChange} />
     </div>
   )
 }

@@ -366,6 +366,8 @@ window.PI_I18N = {
     'attach.one': '{n} image attached',
     'attach.other': '{n} images attached',
     'attach.remove': 'Remove',
+    'attach.pdfEmpty': 'No extractable text in this PDF',
+    'attach.pdfFailed': 'Could not read this PDF',
 
     /* ---- status bar ---- */
     'status.ready': 'ready',
@@ -964,6 +966,8 @@ window.PI_I18N = {
     'attach.one': '已添加 {n} 张图片',
     'attach.other': '已添加 {n} 张图片',
     'attach.remove': '移除',
+    'attach.pdfEmpty': '这个 PDF 没有可提取的文本',
+    'attach.pdfFailed': '无法读取这个 PDF',
 
     /* ---- status bar ---- */
     'status.ready': '就绪',
